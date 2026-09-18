@@ -54,7 +54,12 @@
       "expo-status-bar",
       "expo-web-browser",
       "expo-asset",
-      "@sentry/react-native"
+      [
+        "@sentry/react-native",
+        {
+          "disableAutoUpload": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
