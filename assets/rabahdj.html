@@ -355,7 +355,7 @@ video{width:100%;max-width:430px;border-radius:16px;background:#000;margin-top:1
 <div id="toast"></div>
 
 <script>
-let peer=null, conns=new Map(), myName='', room='', isHost=false;
+let peer=null, conns=new Map(), myName='', room='', userId='', isHost=false;
 let liveStream=null, liveFrom=null, rec=null, chunks=[], hostId='';
 const $=s=>document.querySelector(s);
 const go=id=>{if(id!=='live' && liveStream){stopLive();}closeDummyAudioCtx();document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$('#'+id).classList.add('active');if(id==='live'){if(!liveStream)toggleLive();else tryStartCall();}};
@@ -797,12 +797,33 @@ function clearNotifications(){
 }
 document.addEventListener('DOMContentLoaded', loadSettings);
 
+function getBannedUserIds(){
+  try{
+    const value = JSON.parse(localStorage.getItem('rabahdj_banned_users') || '[]');
+    return Array.isArray(value) ? value : [];
+  }catch(e){
+    return [];
+  }
+}
+
+function isUserBanned(userId){
+  if(!userId) return false;
+  return getBannedUserIds().includes(userId);
+}
+
 function join(){
   if(peer && !peer.destroyed){
     toast('✅ أنت متصل بالفعل بالغرفة');
     return;
   }
   myName=$('#name').value.trim()||('مستخدم'+Math.floor(Math.random()*99));
+    // هوية دائمة للمستخدم، مستقلة تماماً عن PeerJS peer.id
+    userId = localStorage.getItem('rabahdj_user_id');
+    if(!userId){
+      userId = 'u_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,10);
+      localStorage.setItem('rabahdj_user_id', userId);
+    }
+
   room=($('#room').value.trim()||'100');
   localStorage.setItem('rabahdj_name', myName);
   localStorage.setItem('rabahdj_room', room);
@@ -820,7 +841,7 @@ function join(){
   wireReconnect();
       peer.on('open',()=>{
         isHost=false;
-        const c=peer.connect(hostId,{metadata:{name:myName}, reliable:true});
+        const c=peer.connect(hostId,{metadata:{name:myName,userId:userId}, reliable:true});
         toast('⏳ جاري الانضمام لغرفة المضيف...');
         c.on('open',()=>{ toast('✅ تم الانضمام فعلياً'); addConn(c); });
         c.on('error',e=>toast('❌ خطأ اتصال الغرفة: '+(e.type||e.message||e)));
@@ -855,8 +876,22 @@ function wireReconnect(){
 }
 function wire(){
   peer.on('connection',c=>c.on('open',()=>{
+    const incomingUserId = c.metadata?.userId || '';
+
+    if(isHost && isUserBanned(incomingUserId)){
+      try{ c.send({type:'kicked'}); }catch(e){}
+      setTimeout(()=>{ try{ c.close(); }catch(e){} },200);
+      return;
+    }
+
     addConn(c);
-    if(isHost) broadcast({type:'join',id:c.peer,name:c.metadata?.name||'?'});
+
+    if(isHost) broadcast({
+      type:'join',
+      id:c.peer,
+      userId:incomingUserId,
+      name:c.metadata?.name||'?'
+    });
   }));
   peer.on('call',call=>{
     if(call.metadata && call.metadata.kind==='call2'){
@@ -893,7 +928,7 @@ function wire(){
 function ready(){setStatus('متصل • '+room+' ('+(conns.size+1)+')');toast('تم الاتصال بالغرفة '+room);}
 function addConn(c){
   if(!c || !c.peer) return;
-  conns.set(c.peer,{c,name:c.metadata?.name||'?'});
+  conns.set(c.peer,{c,name:c.metadata?.name||'?',userId:c.metadata?.userId||''});
   c.on('data',d=>handle(d,c.peer));
   c.on('close',()=>{conns.delete(c.peer);setStatus('متصل • '+room+' ('+(conns.size+1)+')');if($('#nearby').classList.contains('active'))renderNearby();});
   setStatus('متصل • '+room+' ('+(conns.size+1)+')');
@@ -901,7 +936,7 @@ function addConn(c){
   if($('#nearby').classList.contains('active'))renderNearby();
   if($('#live').classList.contains('active')) tryStartCall();
 }
-function connectTo(id){if(id!==peer.id&&!conns.has(id)){const c=peer.connect(id,{metadata:{name:myName}});c.on('open',()=>addConn(c));}}
+function connectTo(id){if(id!==peer.id&&!conns.has(id)){const c=peer.connect(id,{metadata:{name:myName,userId:userId}});c.on('open',()=>addConn(c));}}
 function broadcast(o){conns.forEach(({c})=>{if(c.open)c.send(o);});}
 
 function handle(d,from){
@@ -1307,7 +1342,7 @@ const ADMIN_PASSWORD = "Rbh2605";
 let chatMsgCount = 0;
 window.getAdminStats = function(){
   var members = [];
-  if (typeof conns !== 'undefined') { conns.forEach(function(v,k){ members.push({peerId:k, name:v.name}); }); }
+  if (typeof conns !== 'undefined') { conns.forEach(function(v,k){ members.push({peerId:k, userId:v.userId||'', name:v.name}); }); }
   window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({
     cmd:'adminStats',
     connected: (typeof conns!=='undefined' ? conns.size+1 : 1),
@@ -1325,6 +1360,34 @@ window.adminKickMember = function(peerId){
   if(!entry) return;
   try{ entry.c.send({type:'kicked'}); }catch(e){}
   setTimeout(function(){ try{ entry.c.close(); }catch(e){} conns.delete(peerId); }, 200);
+};
+window.adminBanMember = function(userId, peerId){
+  if(typeof isHost === 'undefined' || !isHost) return;
+  if(!userId) return;
+
+  try{
+    const banned = getBannedUserIds();
+    if(!banned.includes(userId)){
+      banned.push(userId);
+      localStorage.setItem('rabahdj_banned_users', JSON.stringify(banned));
+    }
+  }catch(e){
+    return;
+  }
+
+  if(typeof conns !== 'undefined'){
+    const entry = conns.get(peerId);
+    if(entry){
+      try{ entry.c.send({type:'kicked'}); }catch(e){}
+      setTimeout(function(){
+        try{ entry.c.close(); }catch(e){}
+        conns.delete(peerId);
+        if(typeof window.getAdminStats === 'function'){
+          window.getAdminStats();
+        }
+      }, 200);
+    }
+  }
 };
 window.adminBroadcastAnnouncement = function(text){
   if (typeof broadcast === 'function') broadcast({type:'chat', name:'admin', text:text});

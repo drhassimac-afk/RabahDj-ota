@@ -19,8 +19,16 @@ import ProfileNative, { type ProfileState } from '@/components/profile-native';
 import HomeNative from '@/components/home-native';
 import AdminLoginModal from '@/components/admin-login-modal';
 import AdminChangePasswordModal from '@/components/admin-change-password-modal';
+import AdminBroadcastModal from '@/components/admin-broadcast-modal';
 import AdminNative, { type AdminStats } from '@/components/admin-native';
 import { checkAdminLogin, changeAdminCredentials } from '@/lib/admin-auth';
+import * as Sentry from '@sentry/react-native';
+
+Sentry.init({
+  dsn: 'https://bcc2e8f4dbd04961dd25daade30bfeb3@o4512108571066368.ingest.de.sentry.io/4512108585484368',
+  debug: false,
+  tracesSampleRate: 1.0,
+});
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -124,7 +132,7 @@ const MAX_FILE_BYTES = 8 * 1024 * 1024;
 type CinemaCategory = 'movies' | 'tv' | 'series';
 type GameTab = 'xo' | 'chess';
 
-export default function Index() {
+function Index() {
   const [ready, setReady] = useState(false);
   const [showWalkie, setShowWalkie] = useState(false);
   const [isPttRecording, setIsPttRecording] = useState(false);
@@ -170,6 +178,7 @@ export default function Index() {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [adminLoginError, setAdminLoginError] = useState<string | null>(null);
   const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
+  const [showBroadcast, setShowBroadcast] = useState(false);
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
 
   const injectToPage = useCallback((code: string) => {
@@ -452,6 +461,41 @@ export default function Index() {
     [injectToPage, requestAdminStats]
   );
 
+  const handleBanMember = useCallback(
+    (userId: string, peerId: string) => {
+      if (!userId) {
+        Alert.alert('تعذر الحظر', 'هذا العضو لا يملك userId صالحًا.');
+        return;
+      }
+
+      Alert.alert(
+        'حظر العضو',
+        'سيتم حظر هذا المستخدم من الغرفة الحالية بشكل دائم على هذا الجهاز. هل تريد المتابعة؟',
+        [
+          { text: 'إلغاء', style: 'cancel' },
+          {
+            text: 'حظر',
+            style: 'destructive',
+            onPress: () => {
+              injectToPage(
+                `window.adminBanMember && window.adminBanMember(${JSON.stringify(userId)}, ${JSON.stringify(peerId)}); void 0;`
+              );
+              setTimeout(requestAdminStats, 400);
+            },
+          },
+        ]
+      );
+    },
+    [injectToPage, requestAdminStats]
+  );
+
+  const handleBroadcastSubmit = useCallback(
+    (text: string) => {
+      injectToPage(`window.adminBroadcastAnnouncement && window.adminBroadcastAnnouncement(${JSON.stringify(text)}); void 0;`);
+    },
+    [injectToPage]
+  );
+
   const handleChangePasswordSubmit = useCallback(
     async (oldPass: string, newUser: string, newPass: string) => {
       const result = await changeAdminCredentials(oldPass, newUser, newPass);
@@ -678,7 +722,11 @@ export default function Index() {
             notifs: msg.notifs ?? 0,
             room: msg.room ?? '',
             isHost: !!msg.isHost,
-            members: msg.members ?? [],
+            members: (msg.members ?? []).map((m: any) => ({
+        peerId: m.peerId ?? '',
+        userId: m.userId ?? '',
+        name: m.name ?? '?',
+      })),
           });
         }
 
@@ -835,7 +883,9 @@ export default function Index() {
           stats={adminStats}
           onRefresh={requestAdminStats}
           onKick={handleKickMember}
+          onBan={handleBanMember}
           onOpenChangePassword={() => setShowChangePassword(true)}
+          onOpenBroadcast={() => setShowBroadcast(true)}
           onLogout={() => setShowAdmin(false)}
         />
       )}
@@ -845,6 +895,12 @@ export default function Index() {
         onClose={() => setShowAdminLogin(false)}
         onSubmit={handleAdminLoginSubmit}
         error={adminLoginError}
+      />
+
+      <AdminBroadcastModal
+        visible={showBroadcast}
+        onClose={() => setShowBroadcast(false)}
+        onSubmit={handleBroadcastSubmit}
       />
 
       <AdminChangePasswordModal
@@ -865,3 +921,5 @@ const styles = StyleSheet.create({
   adminLinkBtn: { position: 'absolute', bottom: 24, alignSelf: 'center', padding: 8 },
   adminLinkText: { color: '#8892b0', fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
 });
+
+export default Sentry.wrap(Index);
