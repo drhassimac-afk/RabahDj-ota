@@ -66,7 +66,15 @@ export default function FilesNative({ files, onPickFile, onDownload, onBack }: P
             </View>
           );
         }}
-        ListEmptyComponent={<Text style={styles.empty}>لا توجد ملفات بعد</Text>}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyIcon}>📁</Text>
+            <Text style={styles.emptyTitle}>لا توجد ملفات بعد</Text>
+            <Text style={styles.emptySubtitle}>
+              اختر ملفًا أو أكثر لمشاركته مع الموجودين في الغرفة
+            </Text>
+          </View>
+        }
       />
     </View>
   );
@@ -91,5 +99,8 @@ const styles = StyleSheet.create({
   fileMeta: { color: '#94a3b8', fontSize: 12, marginTop: 2 },
   downloadBtn: { backgroundColor: '#2563eb', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10 },
   downloadText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  empty: { color: '#94a3b8', textAlign: 'center', marginTop: 40 },
+  emptyState: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 },
+  emptyIcon: { fontSize: 42, marginBottom: 12, opacity: 0.45 },
+  emptyTitle: { color: '#cbd5e1', fontSize: 15, fontWeight: '800', marginBottom: 6 },
+  emptySubtitle: { color: '#64748b', fontSize: 12, textAlign: 'center', lineHeight: 19 },
 });

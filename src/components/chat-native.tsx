@@ -32,7 +32,15 @@ export default function ChatNative({ messages, onSend, onBack }: Props) {
             <Text style={styles.msgText}>{item.text}</Text>
           </View>
         )}
-        ListEmptyComponent={<Text style={styles.empty}>لا توجد رسائل بعد</Text>}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyIcon}>💬</Text>
+            <Text style={styles.emptyTitle}>لا توجد رسائل بعد</Text>
+            <Text style={styles.emptySubtitle}>
+              ابدأ المحادثة برسالة جديدة وسيظهر الحوار هنا
+            </Text>
+          </View>
+        }
       />
 
       <View style={styles.row}>
@@ -69,7 +77,10 @@ const styles = StyleSheet.create({
   msgMine: { alignSelf: 'flex-end', backgroundColor: '#2563eb33' },
   msgName: { color: '#93c5fd', fontSize: 11, marginBottom: 4 },
   msgText: { color: '#fff' },
-  empty: { color: '#94a3b8', textAlign: 'center', marginTop: 40 },
+  emptyState: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 },
+  emptyIcon: { fontSize: 42, marginBottom: 12, opacity: 0.45 },
+  emptyTitle: { color: '#cbd5e1', fontSize: 15, fontWeight: '800', marginBottom: 6 },
+  emptySubtitle: { color: '#64748b', fontSize: 12, textAlign: 'center', lineHeight: 19 },
   row: { flexDirection: 'row', gap: 8, marginBottom: 20, marginTop: 8 },
   input: { flex: 1, backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#ffffff22', borderRadius: 12, padding: 12, color: '#fff' },
   sendBtn: { backgroundColor: '#2563eb', paddingHorizontal: 20, justifyContent: 'center', borderRadius: 12 },

@@ -57,7 +57,7 @@ export default function GamesNative({
         </TouchableOpacity>
       </View>
 
-      {activeTab === 'xo' && xo && (
+      {activeTab === 'xo' && xo ? (
         <View style={{ alignItems: 'center' }}>
           <View style={styles.xoBoard}>
             {[0, 1, 2].map((rowIdx) => (
@@ -87,9 +87,17 @@ export default function GamesNative({
             <Text style={styles.resetBtnText}>لعبة جديدة</Text>
           </TouchableOpacity>
         </View>
-      )}
+      ) : activeTab === 'xo' ? (
+        <View style={styles.emptyGameState}>
+          <Text style={styles.emptyGameIcon}>⭕</Text>
+          <Text style={styles.emptyGameTitle}>لعبة إكس أو غير جاهزة</Text>
+          <Text style={styles.emptyGameSubtitle}>
+            انتظر بدء اللعبة أو إعادة الاتصال بالغرفة
+          </Text>
+        </View>
+      ) : null}
 
-      {activeTab === 'chess' && chess && (
+      {activeTab === 'chess' && chess ? (
         <View style={{ alignItems: 'center' }}>
           <View style={styles.chessBoard}>
             {chess.board.map((row, r) => (
@@ -125,7 +133,15 @@ export default function GamesNative({
             <Text style={styles.resetBtnText}>لعبة جديدة</Text>
           </TouchableOpacity>
         </View>
-      )}
+      ) : activeTab === 'chess' ? (
+        <View style={styles.emptyGameState}>
+          <Text style={styles.emptyGameIcon}>♟️</Text>
+          <Text style={styles.emptyGameTitle}>لعبة الشطرنج غير جاهزة</Text>
+          <Text style={styles.emptyGameSubtitle}>
+            انتظر بدء اللعبة أو إعادة الاتصال بالغرفة
+          </Text>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -150,6 +166,30 @@ const styles = StyleSheet.create({
   status: { color: '#94a3b8', fontSize: 14, textAlign: 'center', marginTop: 14 },
   resetBtn: { backgroundColor: '#dc2626', paddingVertical: 10, paddingHorizontal: 24, borderRadius: 12, marginTop: 14 },
   resetBtnText: { color: '#fff', fontWeight: '800' },
+
+  emptyGameState: {
+    alignItems: 'center',
+    paddingVertical: 50,
+    paddingHorizontal: 24,
+  },
+  emptyGameIcon: {
+    fontSize: 46,
+    marginBottom: 14,
+    opacity: 0.45,
+  },
+  emptyGameTitle: {
+    color: '#cbd5e1',
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 7,
+    textAlign: 'center',
+  },
+  emptyGameSubtitle: {
+    color: '#64748b',
+    fontSize: 12,
+    lineHeight: 19,
+    textAlign: 'center',
+  },
   chessBoard: { borderWidth: 2, borderColor: '#ffffff22', borderRadius: 8, overflow: 'hidden', marginTop: 10 },
   chessRow: { flexDirection: 'row' },
   sq: { width: CELL, height: CELL, justifyContent: 'center', alignItems: 'center' },

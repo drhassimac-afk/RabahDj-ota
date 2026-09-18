@@ -291,6 +291,13 @@ function Index() {
     [injectToPage]
   );
 
+  const handleDeleteCinemaHistoryItem = useCallback(
+    (url: string) => {
+      injectToPage(`window.removeCinemaHistoryItem && window.removeCinemaHistoryItem(${JSON.stringify(cinemaCategory)}, ${JSON.stringify(url)}); void 0;`);
+    },
+    [injectToPage, cinemaCategory]
+  );
+
   const handleCinemaPlay = useCallback(
     (url: string) => {
       injectToPage(`playCinema(true, ${JSON.stringify(url)}); void 0;`);
@@ -826,6 +833,7 @@ function Index() {
             history={cinemaHistory}
             onSelectCategory={handleSelectCinemaCategory}
             onPlay={handleCinemaPlay}
+            onDeleteHistoryItem={handleDeleteCinemaHistoryItem}
             onBack={closeCinema}
           />
         </View>

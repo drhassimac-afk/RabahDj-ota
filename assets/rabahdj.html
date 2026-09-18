@@ -1323,6 +1323,11 @@ function addToCinemaHistory(url, category){
   if(cinemaHistory[category].length>5) cinemaHistory[category].pop();
   renderCinemaHistory();
 }
+function removeCinemaHistoryItem(category, url){
+  cinemaHistory[category] = cinemaHistory[category].filter(u=>u!==url);
+  renderCinemaHistory();
+}
+window.removeCinemaHistoryItem = removeCinemaHistoryItem;
 function renderCinemaHistory(){
   if(window.ReactNativeWebView){window.ReactNativeWebView.postMessage(JSON.stringify({cmd:'cinemaState',category:cinemaCategory,history:cinemaHistory[cinemaCategory]}));}
   const box = $('#cinemaHistoryBox');

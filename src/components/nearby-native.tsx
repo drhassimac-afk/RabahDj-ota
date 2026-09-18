@@ -42,7 +42,15 @@ export default function NearbyNative({ names, myName, onWave, onBack }: Props) {
             </TouchableOpacity>
           </View>
         )}
-        ListEmptyComponent={<Text style={styles.empty}>ما فيه أشخاص متصلين حاليًا</Text>}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyIcon}>📍</Text>
+            <Text style={styles.emptyTitle}>ما فيه أشخاص متصلين حاليًا</Text>
+            <Text style={styles.emptySubtitle}>
+              عندما ينضم أشخاص آخرون إلى الغرفة سيظهرون هنا
+            </Text>
+          </View>
+        }
       />
     </View>
   );
@@ -63,5 +71,8 @@ const styles = StyleSheet.create({
   statusPill: { color: '#4ade80', backgroundColor: '#4ade8018', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 20, fontSize: 12 },
   waveBtn: { backgroundColor: '#2563eb', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10 },
   waveBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  empty: { color: '#94a3b8', textAlign: 'center', marginTop: 20 },
+  emptyState: { alignItems: 'center', paddingVertical: 30, paddingHorizontal: 20 },
+  emptyIcon: { fontSize: 42, marginBottom: 12, opacity: 0.45 },
+  emptyTitle: { color: '#cbd5e1', fontSize: 15, fontWeight: '800', marginBottom: 6, textAlign: 'center' },
+  emptySubtitle: { color: '#64748b', fontSize: 12, textAlign: 'center', lineHeight: 19 },
 });
