@@ -39,7 +39,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      [ 
+      [
         "expo-notifications",
         {
           "icon": "./assets/images/icon.png",
@@ -62,9 +62,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "b49a8cee-2396-4d27-9cd5-025a37f7e840"
+        "projectId": "غير معروف بعد — شغّل init أول استخدام"
       }
     },
-    "owner": "rabahdfd"
+    "owner": "badidas-team"
   }
 }

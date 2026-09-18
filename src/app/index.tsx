@@ -4,7 +4,6 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, PermissionsAndroid, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-
 import HtmlHost, { type HtmlHostHandle } from '@/components/html-host';
 import { usePttRecorder } from '@/hooks/use-ptt-recorder';
 import { RABAHDJ_HTML } from '../htmlContent';
@@ -18,6 +17,10 @@ import NearbyNative from '@/components/nearby-native';
 import SettingsNative, { type SettingsState } from '@/components/settings-native';
 import ProfileNative, { type ProfileState } from '@/components/profile-native';
 import HomeNative from '@/components/home-native';
+import AdminLoginModal from '@/components/admin-login-modal';
+import AdminChangePasswordModal from '@/components/admin-change-password-modal';
+import AdminNative, { type AdminStats } from '@/components/admin-native';
+import { checkAdminLogin, changeAdminCredentials } from '@/lib/admin-auth';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -84,7 +87,6 @@ async function readAudioAsBase64(uri: string): Promise<string> {
 async function setupNotifications() {
   try {
     if (Platform.OS !== 'android') return;
-
     await Notifications.setNotificationChannelAsync('rabahdj', {
       name: 'RabahDj',
       importance: Notifications.AndroidImportance.HIGH,
@@ -161,8 +163,14 @@ export default function Index() {
   const [homeRoom, setHomeRoom] = useState('');
   const [connectionStatus, setConnectionStatus] = useState('غير متصل');
   const homeNamePrefilledRef = useRef(false);
-
   const hostRef = useRef<HtmlHostHandle>(null);
+
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [adminLoginError, setAdminLoginError] = useState<string | null>(null);
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
+  const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
 
   const injectToPage = useCallback((code: string) => {
     hostRef.current?.injectJavaScript(code);
@@ -417,6 +425,47 @@ export default function Index() {
     );
   }, [injectToPage, homeName, homeRoom]);
 
+  const requestAdminStats = useCallback(() => {
+    injectToPage(`window.getAdminStats && window.getAdminStats(); void 0;`);
+  }, [injectToPage]);
+
+  const handleAdminLoginSubmit = useCallback(
+    async (user: string, pass: string) => {
+      const ok = await checkAdminLogin(user, pass);
+      if (ok) {
+        setAdminLoginError(null);
+        setShowAdminLogin(false);
+        setShowAdmin(true);
+        requestAdminStats();
+      } else {
+        setAdminLoginError('اسم المستخدم أو كلمة السر غير صحيحة');
+      }
+    },
+    [requestAdminStats]
+  );
+
+  const handleKickMember = useCallback(
+    (peerId: string) => {
+      injectToPage(`window.adminKickMember && window.adminKickMember(${JSON.stringify(peerId)}); void 0;`);
+      setTimeout(requestAdminStats, 400);
+    },
+    [injectToPage, requestAdminStats]
+  );
+
+  const handleChangePasswordSubmit = useCallback(
+    async (oldPass: string, newUser: string, newPass: string) => {
+      const result = await changeAdminCredentials(oldPass, newUser, newPass);
+      if (result.ok) {
+        setChangePasswordError(null);
+        setShowChangePassword(false);
+        Alert.alert('تم', 'تم تحديث بيانات دخول المسؤول بنجاح');
+      } else {
+        setChangePasswordError(result.error ?? 'حدث خطأ');
+      }
+    },
+    []
+  );
+
   useEffect(() => {
     async function requestPerms() {
       if (Platform.OS === 'android') {
@@ -500,6 +549,13 @@ export default function Index() {
           lastRoom?: string;
           status?: string;
           avatar?: string;
+          msgs?: number;
+          notifs?: number;
+          connected?: number;
+          viewers?: number;
+          room?: string;
+          isHost?: boolean;
+          members?: { peerId: string; name: string }[];
         };
 
         if (msg.cmd === 'pttStart') void startPtt();
@@ -613,6 +669,22 @@ export default function Index() {
             trigger: null,
           });
         }
+
+        if (msg.cmd === 'adminStats') {
+          setAdminStats({
+            connected: msg.connected ?? 0,
+            viewers: msg.viewers ?? 0,
+            msgs: msg.msgs ?? 0,
+            notifs: msg.notifs ?? 0,
+            room: msg.room ?? '',
+            isHost: !!msg.isHost,
+            members: msg.members ?? [],
+          });
+        }
+
+        if (msg.cmd === 'kickedFromRoom') {
+          Alert.alert('تم الفصل', 'تم فصلك من الغرفة من قبل الإدارة.');
+        }
       } catch (error) {
         console.log('onMessage parse error', error);
       }
@@ -624,7 +696,7 @@ export default function Index() {
 
   const webviewNeedsVisible = showLive || showCinema;
   const isAnyOverlayActive =
-    showWalkie || showLive || showFiles || showCinema || showGames || showChat || showNearby || showSettings || showProfile;
+    showWalkie || showLive || showFiles || showCinema || showGames || showChat || showNearby || showSettings || showProfile || showAdmin;
 
   const homeCards = [
     { key: 'live', label: 'بث مباشر', emoji: '📡', gradient: ['#7c1fd9', '#4a0f8c'] as [string, string], onPress: openLive },
@@ -645,6 +717,7 @@ export default function Index() {
         onFileDownload={handleFileDownload}
         style={webviewNeedsVisible ? styles.flexFull : styles.hidden}
       />
+
       {!isAnyOverlayActive && (
         <View style={styles.overlayFill}>
           <HomeNative
@@ -658,8 +731,12 @@ export default function Index() {
             onOpenSettings={openSettings}
             onOpenProfile={openProfile}
           />
+          <TouchableOpacity style={styles.adminLinkBtn} onPress={() => setShowAdminLogin(true)}>
+            <Text style={styles.adminLinkText}>الدخول المسؤول</Text>
+          </TouchableOpacity>
         </View>
       )}
+
       {showWalkie && (
         <View style={styles.overlayFill}>
           <WalkieNative
@@ -671,6 +748,7 @@ export default function Index() {
           />
         </View>
       )}
+
       {showLive && (
         <LiveNative
           isLive={isLive}
@@ -681,6 +759,7 @@ export default function Index() {
           onBack={closeLive}
         />
       )}
+
       {showFiles && (
         <View style={styles.overlayFill}>
           <FilesNative
@@ -691,6 +770,7 @@ export default function Index() {
           />
         </View>
       )}
+
       {showCinema && (
         <View style={styles.overlayFill}>
           <CinemaNative
@@ -702,6 +782,7 @@ export default function Index() {
           />
         </View>
       )}
+
       {showGames && (
         <View style={styles.overlayFill}>
           <GamesNative
@@ -717,16 +798,19 @@ export default function Index() {
           />
         </View>
       )}
+
       {showChat && (
         <View style={styles.overlayFill}>
           <ChatNative messages={chatMessages} onSend={handleSendChat} onBack={closeChat} />
         </View>
       )}
+
       {showNearby && (
         <View style={styles.overlayFill}>
           <NearbyNative names={nearbyNames} myName={nearbyMyName} onWave={handleWave} onBack={closeNearby} />
         </View>
       )}
+
       {showSettings && (
         <View style={styles.overlayFill}>
           <SettingsNative
@@ -739,11 +823,36 @@ export default function Index() {
           />
         </View>
       )}
+
       {showProfile && (
         <View style={styles.overlayFill}>
           <ProfileNative profile={profileState} onSave={handleSaveProfile} onBack={closeProfile} />
         </View>
       )}
+
+      {showAdmin && (
+        <AdminNative
+          stats={adminStats}
+          onRefresh={requestAdminStats}
+          onKick={handleKickMember}
+          onOpenChangePassword={() => setShowChangePassword(true)}
+          onLogout={() => setShowAdmin(false)}
+        />
+      )}
+
+      <AdminLoginModal
+        visible={showAdminLogin}
+        onClose={() => setShowAdminLogin(false)}
+        onSubmit={handleAdminLoginSubmit}
+        error={adminLoginError}
+      />
+
+      <AdminChangePasswordModal
+        visible={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+        onSubmit={handleChangePasswordSubmit}
+        error={changePasswordError}
+      />
     </SafeAreaView>
   );
 }
@@ -753,4 +862,6 @@ const styles = StyleSheet.create({
   flexFull: { flex: 1 },
   hidden: { position: 'absolute', width: 1, height: 1, opacity: 0 },
   overlayFill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#0b1220' },
+  adminLinkBtn: { position: 'absolute', bottom: 24, alignSelf: 'center', padding: 8 },
+  adminLinkText: { color: '#8892b0', fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
 });
