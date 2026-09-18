@@ -54,12 +54,7 @@
       "expo-status-bar",
       "expo-web-browser",
       "expo-asset",
-      [
-        "@sentry/react-native",
-        {
-          "disableAutoUpload": true
-        }
-      ]
+      "@sentry/react-native"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -68,7 +63,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "غير معروف بعد — شغّل init أول استخدام"
+        "projectId": "323e322e-22cd-487d-94af-898d1ccabec3"
       }
     },
     "owner": "badidas-team"
