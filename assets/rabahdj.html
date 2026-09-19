@@ -1301,6 +1301,14 @@ function playCinema(share, urlOverride){
 }
 function renderCinema(url, sharedBy, category){
   if(category && category!==cinemaCategory) showCinemaTab(category);
+  if(url.indexOf('youtube.com/embed/live_stream')!==-1){
+    const liveBox=$('#cinemaBox');
+    const liveSharedLabel = $('#cinemaSharedBy');
+    if(sharedBy){ liveSharedLabel.textContent = cinemaCatLabel[cinemaCategory]+' — يعرضه الآن: '+sharedBy; liveSharedLabel.style.display='block'; }
+    else liveSharedLabel.style.display='none';
+    liveBox.innerHTML = '<iframe width="100%" height="240" src="'+url+'" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen style="border-radius:16px"></iframe>';
+    return;
+  }
   const box=$('#cinemaBox'); let yt=url.match(/(?:youtu\.be\/|v=)([\w-]{11})/);
   const sharedLabel = $('#cinemaSharedBy');
   if(sharedBy){ sharedLabel.textContent = cinemaCatLabel[cinemaCategory]+' — يعرضه الآن: '+sharedBy; sharedLabel.style.display='block'; }

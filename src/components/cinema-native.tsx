@@ -29,6 +29,19 @@ function isYouTube(url: string): boolean {
   return /youtu\.?be/i.test(url);
 }
 
+type PresetChannel = { name: string; emoji: string; channelId: string | null };
+
+const PRESET_CHANNELS: PresetChannel[] = [
+  { name: 'الجزيرة مباشر', emoji: '📡', channelId: 'UCCv1Pd24oPErw5S7zJWltnQ' },
+  { name: 'فرانس 24 عربية', emoji: '🇫🇷', channelId: null },
+  { name: 'بي بي سي عربي', emoji: '🇬🇧', channelId: null },
+  { name: 'سكاي نيوز عربية', emoji: '📰', channelId: null },
+  { name: 'الحرة', emoji: '📻', channelId: null },
+  { name: 'يورونيوز', emoji: '🌍', channelId: null },
+  { name: 'دي دبليو عربي', emoji: '🎙️', channelId: null },
+  { name: 'بين سبورت نيوز', emoji: '⚽', channelId: null },
+];
+
 export default function CinemaNative({
   category,
   history,
@@ -78,6 +91,30 @@ export default function CinemaNative({
           );
         })}
       </View>
+
+      {category === 'tv' && (
+        <View style={styles.presetSection}>
+          <Text style={styles.presetLabel}>قنوات إخبارية مباشرة</Text>
+          <View style={styles.presetGrid}>
+            {PRESET_CHANNELS.map((ch) => {
+              const ready = !!ch.channelId;
+              return (
+                <TouchableOpacity
+                  key={ch.name}
+                  style={[styles.presetBtn, !ready && styles.presetBtnDisabled]}
+                  disabled={!ready}
+                  onPress={() => ready && onPlay(`https://www.youtube.com/embed/live_stream?channel=${ch.channelId}`)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.presetEmoji}>{ch.emoji}</Text>
+                  <Text style={styles.presetName} numberOfLines={1}>{ch.name}</Text>
+                  {!ready && <Text style={styles.presetSoon}>قريبًا</Text>}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
 
       <View style={styles.card}>
         <Text style={styles.cardLabel}>شارك فيديو مع الجميع</Text>
@@ -166,6 +203,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
     borderRadius: 22, padding: 18, marginBottom: 20,
   },
+  presetSection: { marginBottom: 18 },
+  presetLabel: { color: '#94a3b8', fontSize: 13, fontWeight: '700', marginBottom: 10 },
+  presetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  presetBtn: {
+    width: '31%', backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.09)',
+    borderRadius: 14, paddingVertical: 12, alignItems: 'center', gap: 4,
+  },
+  presetBtnDisabled: { opacity: 0.4 },
+  presetEmoji: { fontSize: 20 },
+  presetName: { color: '#e2e8f0', fontSize: 11, fontWeight: '700', textAlign: 'center' },
+  presetSoon: { color: '#64748b', fontSize: 9, marginTop: 2 },
   cardLabel: { color: '#94a3b8', fontSize: 13, fontWeight: '700', marginBottom: 12 },
   inputRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
   input: {
