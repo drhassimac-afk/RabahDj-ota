@@ -6,10 +6,11 @@ export type ProfileState = { name: string; status: string; avatar: string };
 type Props = {
   profile: ProfileState | null;
   onSave: (name: string, status: string) => void;
+  onPickAvatar: () => void;
   onBack: () => void;
 };
 
-export default function ProfileNative({ profile, onSave, onBack }: Props) {
+export default function ProfileNative({ profile, onSave, onPickAvatar, onBack }: Props) {
   const [name, setName] = useState(profile?.name ?? '');
   const [status, setStatus] = useState(profile?.status ?? '');
 
@@ -30,13 +31,16 @@ export default function ProfileNative({ profile, onSave, onBack }: Props) {
         <View style={{ width: 70 }} />
       </View>
 
-      <View style={styles.avatarWrap}>
+      <TouchableOpacity style={styles.avatarWrap} onPress={onPickAvatar} activeOpacity={0.8}>
         {profile?.avatar ? (
           <Image source={{ uri: profile.avatar }} style={styles.avatarImg} />
         ) : (
           <Text style={styles.avatarEmoji}>👤</Text>
         )}
-      </View>
+        <View style={styles.avatarBadge}>
+          <Text style={styles.avatarBadgeText}>📷</Text>
+        </View>
+      </TouchableOpacity>
 
       <View style={styles.box}>
         <Text style={styles.label}>الاسم</Text>
@@ -59,8 +63,13 @@ const styles = StyleSheet.create({
   title: { color: '#fff', fontSize: 18, fontWeight: '800' },
   avatarWrap: {
     width: 110, height: 110, borderRadius: 55, backgroundColor: '#2563eb33', borderWidth: 2, borderColor: '#ffffff22',
-    justifyContent: 'center', alignItems: 'center', alignSelf: 'center', marginBottom: 20, overflow: 'hidden',
+    justifyContent: 'center', alignItems: 'center', alignSelf: 'center', marginBottom: 20,
   },
+  avatarBadge: {
+    position: 'absolute', bottom: 0, right: 0, width: 32, height: 32, borderRadius: 16,
+    backgroundColor: '#2563eb', borderWidth: 2, borderColor: '#0b1220', justifyContent: 'center', alignItems: 'center',
+  },
+  avatarBadgeText: { fontSize: 14 },
   avatarImg: { width: '100%', height: '100%' },
   avatarEmoji: { fontSize: 44 },
   box: { backgroundColor: '#ffffff0a', borderWidth: 1, borderColor: '#ffffff14', borderRadius: 18, padding: 16 },

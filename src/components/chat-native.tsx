@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, FlatList } from 'react-native';
 
 export type ChatMessage = { id: string; name: string; text: string; mine: boolean };
@@ -11,6 +11,8 @@ type Props = {
 
 export default function ChatNative({ messages, onSend, onBack }: Props) {
   const [text, setText] = useState('');
+  const listRef = useRef<FlatList>(null);
+  const canSend = text.trim().length > 0;
   return (
     <View style={styles.container}>
       <View style={styles.top}>
@@ -22,6 +24,8 @@ export default function ChatNative({ messages, onSend, onBack }: Props) {
       </View>
 
       <FlatList
+        ref={listRef}
+        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
         data={messages}
         keyExtractor={(item) => item.id}
         style={styles.list}
@@ -52,7 +56,8 @@ export default function ChatNative({ messages, onSend, onBack }: Props) {
           onChangeText={setText}
         />
         <TouchableOpacity
-          style={styles.sendBtn}
+          style={[styles.sendBtn, !canSend && styles.sendBtnDisabled]}
+          disabled={!canSend}
           onPress={() => {
             if (!text.trim()) return;
             onSend(text.trim());
@@ -84,5 +89,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 8, marginBottom: 20, marginTop: 8 },
   input: { flex: 1, backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#ffffff22', borderRadius: 12, padding: 12, color: '#fff' },
   sendBtn: { backgroundColor: '#2563eb', paddingHorizontal: 20, justifyContent: 'center', borderRadius: 12 },
+  sendBtnDisabled: { backgroundColor: 'rgba(255,255,255,0.08)' },
   sendBtnText: { color: '#fff', fontWeight: '800' },
 });

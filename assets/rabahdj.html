@@ -448,6 +448,14 @@ function applyAvatar(dataUrl){
     $('#avatarEmoji').style.display = 'block';
   }
 }
+window.onNativeAvatarPicked = function(dataUrl){
+  localStorage.setItem('rabahdj_avatar', dataUrl);
+  applyAvatar(dataUrl);
+  if(typeof toast==='function') toast('تم تحديث الصورة');
+  if(window.ReactNativeWebView){
+    window.ReactNativeWebView.postMessage(JSON.stringify({cmd:'profileState',name:($('#profileName')?$('#profileName').value:''),status:($('#profileStatus')?$('#profileStatus').value:''),avatar:dataUrl}));
+  }
+};
 function pickAvatar(e){
   const file = e.target.files[0];
   if(!file) return;

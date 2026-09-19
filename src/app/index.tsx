@@ -2,6 +2,7 @@ import * as Sharing from 'expo-sharing';
 import * as Notifications from 'expo-notifications';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, PermissionsAndroid, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import HtmlHost, { type HtmlHostHandle } from '@/components/html-host';
@@ -418,6 +419,30 @@ function Index() {
 
   const handleClearSettingsData = useCallback(() => {
     injectToPage(`clearSavedData(); void 0;`);
+  }, [injectToPage]);
+
+  const handlePickAvatar = useCallback(async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('إذن مطلوب', 'يرجى السماح بالوصول للصور لاختيار صورة رمزية');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        base64: true,
+        quality: 0.6,
+        allowsEditing: true,
+        aspect: [1, 1],
+      });
+      if (result.canceled || !result.assets?.[0]?.base64) return;
+      const asset = result.assets[0];
+      const mime = asset.mimeType || 'image/jpeg';
+      const dataUrl = `data:${mime};base64,${asset.base64}`;
+      injectToPage(`window.onNativeAvatarPicked && window.onNativeAvatarPicked(${JSON.stringify(dataUrl)}); void 0;`);
+    } catch (error) {
+      Alert.alert('خطأ', error instanceof Error ? error.message : String(error));
+    }
   }, [injectToPage]);
 
   const openProfile = useCallback(() => {
@@ -887,7 +912,7 @@ function Index() {
 
       {showProfile && (
         <View style={styles.overlayFill}>
-          <ProfileNative profile={profileState} onSave={handleSaveProfile} onBack={closeProfile} />
+          <ProfileNative profile={profileState} onSave={handleSaveProfile} onPickAvatar={handlePickAvatar} onBack={closeProfile} />
         </View>
       )}
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, Switch, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, Switch, ScrollView, Alert } from 'react-native';
 
 export type SettingsState = {
   name: string;
@@ -89,7 +89,15 @@ export default function SettingsNative({ settings, onSaveName, onToggleOption, o
       <View style={styles.box}>
         <Text style={styles.label}>آخر غرفة متصل بها</Text>
         <Text style={styles.value}>{settings?.lastRoom ? `غرفة رقم ${settings.lastRoom}` : 'لا يوجد'}</Text>
-        <TouchableOpacity style={styles.clearBtn} onPress={onClearData}>
+        <TouchableOpacity
+          style={styles.clearBtn}
+          onPress={() =>
+            Alert.alert('تأكيد المسح', 'سيتم مسح اسمك وإعدادات الاتصال وآخر غرفة بشكل نهائي. متابعة؟', [
+              { text: 'إلغاء', style: 'cancel' },
+              { text: 'مسح', style: 'destructive', onPress: onClearData },
+            ])
+          }
+        >
           <Text style={styles.saveBtnText}>مسح البيانات المحفوظة</Text>
         </TouchableOpacity>
       </View>
