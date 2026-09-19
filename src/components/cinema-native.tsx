@@ -33,13 +33,14 @@ type PresetChannel = { name: string; emoji: string; channelId: string | null };
 
 const PRESET_CHANNELS: PresetChannel[] = [
   { name: 'الجزيرة مباشر', emoji: '📡', channelId: 'UCCv1Pd24oPErw5S7zJWltnQ' },
-  { name: 'فرانس 24 عربية', emoji: '🇫🇷', channelId: null },
-  { name: 'بي بي سي عربي', emoji: '🇬🇧', channelId: null },
-  { name: 'سكاي نيوز عربية', emoji: '📰', channelId: null },
-  { name: 'الحرة', emoji: '📻', channelId: null },
-  { name: 'يورونيوز', emoji: '🌍', channelId: null },
-  { name: 'دي دبليو عربي', emoji: '🎙️', channelId: null },
-  { name: 'بين سبورت نيوز', emoji: '⚽', channelId: null },
+  { name: 'فرانس 24 عربية', emoji: '🇫🇷', channelId: 'UCdTyuXgmJkG_O8_75eqej-w' },
+  { name: 'بي بي سي عربي', emoji: '🇬🇧', channelId: 'UCelk6aHijZq-GJBBB9YpReA' },
+  { name: 'سكاي نيوز عربية', emoji: '📰', channelId: 'UCIJXOvggjKtCagMfxvcCzAA' },
+  { name: 'الحدث', emoji: '🗞️', channelId: 'UCrj5BGAhtWxDfqbza9T9hqA' },
+  { name: 'يورونيوز', emoji: '🌍', channelId: 'UCW2QcKZiU8aUGg4yxCIditg' },
+  { name: 'دي دبليو عربي', emoji: '🎙️', channelId: 'UC30ditU5JI16o5NbFsHde_Q' },
+  { name: 'الجزائر الدولية', emoji: '🇩🇿', channelId: 'UC2TJu-b6OCHIxW-TvoF5NSQ' },
+  { name: 'بين سبورت نيوز', emoji: '⚽', channelId: 'UCJUCcJUeh0Cz2xyKwkw5Q1w' },
 ];
 
 export default function CinemaNative({
