@@ -14,6 +14,7 @@ type Props = {
   files: NativeFileEntry[];
   onPickFile: () => void;
   onDownload: (file: NativeFileEntry) => void;
+  onDelete: (id: string) => void;
   onBack: () => void;
 };
 
@@ -23,7 +24,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function FilesNative({ files, onPickFile, onDownload, onBack }: Props) {
+export default function FilesNative({ files, onPickFile, onDownload, onDelete, onBack }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.top}>
@@ -63,6 +64,9 @@ export default function FilesNative({ files, onPickFile, onDownload, onBack }: P
               <TouchableOpacity style={styles.downloadBtn} onPress={() => onDownload(item)}>
                 <Text style={styles.downloadText}>تحميل</Text>
               </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteBtn} onPress={() => onDelete(item.id)}>
+                <Text style={styles.deleteText}>🗑️</Text>
+              </TouchableOpacity>
             </View>
           );
         }}
@@ -99,6 +103,8 @@ const styles = StyleSheet.create({
   fileMeta: { color: '#94a3b8', fontSize: 12, marginTop: 2 },
   downloadBtn: { backgroundColor: '#2563eb', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10 },
   downloadText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  deleteBtn: { width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(220,38,38,0.12)', alignItems: 'center', justifyContent: 'center' },
+  deleteText: { fontSize: 14 },
   emptyState: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 },
   emptyIcon: { fontSize: 42, marginBottom: 12, opacity: 0.45 },
   emptyTitle: { color: '#cbd5e1', fontSize: 15, fontWeight: '800', marginBottom: 6 },

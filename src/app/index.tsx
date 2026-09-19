@@ -274,6 +274,10 @@ function Index() {
     void handleFileDownload(file.dataUrl);
   }, []);
 
+  const handleDeleteFile = useCallback((id: string) => {
+    setNativeFiles((prev) => prev.filter((f) => f.id !== id));
+  }, []);
+
   const openCinema = useCallback(() => {
     setShowCinema(true);
     injectToPage(`go('cinema'); showCinemaTab('movies'); void 0;`);
@@ -821,6 +825,7 @@ function Index() {
             files={nativeFiles}
             onPickFile={handlePickFile}
             onDownload={handleDownloadFile}
+            onDelete={handleDeleteFile}
             onBack={() => setShowFiles(false)}
           />
         </View>
