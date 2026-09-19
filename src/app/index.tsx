@@ -149,6 +149,7 @@ function Index() {
   const [showCinema, setShowCinema] = useState(false);
   const [cinemaCategory, setCinemaCategory] = useState<CinemaCategory>('movies');
   const [cinemaHistory, setCinemaHistory] = useState<string[]>([]);
+  const [isCinemaPlaying, setIsCinemaPlaying] = useState(false);
 
   const [showGames, setShowGames] = useState(false);
   const [activeGameTab, setActiveGameTab] = useState<GameTab>('xo');
@@ -287,6 +288,7 @@ function Index() {
   const closeCinema = useCallback(() => {
     injectToPage(`go('home'); void 0;`);
     setShowCinema(false);
+    setIsCinemaPlaying(false);
   }, [injectToPage]);
 
   const handleSelectCinemaCategory = useCallback(
@@ -306,6 +308,7 @@ function Index() {
   const handleCinemaPlay = useCallback(
     (url: string) => {
       injectToPage(`playCinema(true, ${JSON.stringify(url)}); void 0;`);
+      setIsCinemaPlaying(true);
     },
     [injectToPage]
   );
@@ -857,7 +860,7 @@ function Index() {
       )}
 
       {showCinema && (
-        <View style={styles.overlayFill}>
+        <View style={isCinemaPlaying ? styles.overlayTransparent : styles.overlayFill}>
           <CinemaNative
             category={cinemaCategory}
             history={cinemaHistory}
@@ -865,6 +868,8 @@ function Index() {
             onPlay={handleCinemaPlay}
             onDeleteHistoryItem={handleDeleteCinemaHistoryItem}
             onBack={closeCinema}
+            isPlaying={isCinemaPlaying}
+            onBackToBrowse={() => setIsCinemaPlaying(false)}
           />
         </View>
       )}
@@ -956,6 +961,7 @@ const styles = StyleSheet.create({
   flexFull: { flex: 1 },
   hidden: { position: 'absolute', width: 1, height: 1, opacity: 0 },
   overlayFill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#0b1220' },
+  overlayTransparent: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   adminLinkBtn: { position: 'absolute', bottom: 24, alignSelf: 'center', padding: 8 },
   adminLinkText: { color: '#8892b0', fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
 });

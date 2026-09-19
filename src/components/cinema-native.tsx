@@ -17,6 +17,8 @@ type Props = {
   onPlay: (url: string) => void;
   onDeleteHistoryItem: (url: string) => void;
   onBack: () => void;
+  isPlaying: boolean;
+  onBackToBrowse: () => void;
 };
 
 function isLikelyValidUrl(value: string): boolean {
@@ -50,6 +52,8 @@ export default function CinemaNative({
   onPlay,
   onDeleteHistoryItem,
   onBack,
+  isPlaying,
+  onBackToBrowse,
 }: Props) {
   const [url, setUrl] = useState('');
   const canPlay = useMemo(() => isLikelyValidUrl(url), [url]);
@@ -64,6 +68,16 @@ export default function CinemaNative({
     const text = await Clipboard.getStringAsync();
     if (text) setUrl(text.trim());
   };
+
+  if (isPlaying) {
+    return (
+      <View style={styles.playingOverlay} pointerEvents="box-none">
+        <TouchableOpacity style={styles.playingBackBtn} onPress={onBackToBrowse} activeOpacity={0.85}>
+          <Text style={styles.playingBackText}>← تصفح</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -183,6 +197,12 @@ export default function CinemaNative({
 }
 
 const styles = StyleSheet.create({
+  playingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  playingBackBtn: {
+    position: 'absolute', top: 50, left: 16, backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12,
+  },
+  playingBackText: { color: '#fff', fontWeight: '700' },
   container: { flex: 1, backgroundColor: '#0b1220', paddingTop: 50, paddingHorizontal: 16 },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 },
   back: { backgroundColor: '#ffffff14', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 12 },
