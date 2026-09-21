@@ -1,3 +1,4 @@
+import YacineNative from '@/components/yacine-native';
 import * as Sharing from 'expo-sharing';
 import * as Notifications from 'expo-notifications';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -136,6 +137,8 @@ type GameTab = 'xo' | 'chess';
 function Index() {
   const [ready, setReady] = useState(false);
   const [showWalkie, setShowWalkie] = useState(false);
+  const [showYacine, setShowYacine] = useState(false);
+  const [showYacine, setShowYacine] = useState(false);
   const [isPttRecording, setIsPttRecording] = useState(false);
   const [lastSpeaker, setLastSpeaker] = useState<string | null>(null);
 
@@ -147,6 +150,7 @@ function Index() {
   const [nativeFiles, setNativeFiles] = useState<NativeFileEntry[]>([]);
 
   const [showCinema, setShowCinema] = useState(false);
+  const [showYacine, setShowYacine] = useState(false);
   const [cinemaCategory, setCinemaCategory] = useState<CinemaCategory>('movies');
   const [cinemaHistory, setCinemaHistory] = useState<string[]>([]);
   const [isCinemaPlaying, setIsCinemaPlaying] = useState(false);
@@ -796,6 +800,8 @@ function Index() {
   ];
 
   return (
+    showYacine ? <YacineNative onClose={() => setShowYacine(false)} /> :
+    showYacine ? <YacineNative onClose={() => setShowYacine(false)} /> :
     <SafeAreaView style={styles.container}>
       <HtmlHost
         ref={hostRef}
@@ -861,7 +867,9 @@ function Index() {
 
       {showCinema && (
         <View style={isCinemaPlaying ? styles.overlayTransparent : styles.overlayFill}>
-          <CinemaNative
+          <TouchableOpacity style={{backgroundColor:'#ff0000', padding:12, margin:10, borderRadius:8, alignItems:'center'}} onPress={() => setShowYacine(true)}><Text style={{color:'#fff', fontWeight:'bold'}}>📺 قنوات ياسين تيفي</Text></TouchableOpacity>
+      <TouchableOpacity style={{backgroundColor:'#ff0000', padding:12, margin:10, borderRadius:8, alignItems:'center'}} onPress={() => setShowYacine(true)}><Text style={{color:'#fff', fontWeight:'bold'}}>📺 قنوات ياسين تيفي</Text></TouchableOpacity>
+      <CinemaNative
             category={cinemaCategory}
             history={cinemaHistory}
             onSelectCategory={handleSelectCinemaCategory}

@@ -11,7 +11,8 @@
       "infoPlist": {
         "NSCameraUsageDescription": "التطبيق يحتاج الكاميرا للبث المباشر",
         "NSMicrophoneUsageDescription": "التطبيق يحتاج المايك للتخاطب الصوتي والبث"
-      }
+      },
+      "bundleIdentifier": "com.rabahdj.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -54,7 +55,8 @@
       "expo-status-bar",
       "expo-web-browser",
       "expo-asset",
-      "@sentry/react-native"
+      "@sentry/react-native",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true,

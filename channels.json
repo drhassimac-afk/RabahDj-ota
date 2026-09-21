@@ -1,0 +1,27 @@
+[
+  { 
+    "id": "1", 
+    "name": "BEIN SPORT 1 HD (جودة عالية)", 
+    "url": "https://104.26.0" 
+  },
+  { 
+    "id": "2", 
+    "name": "BEIN SPORT 1 SD (ضعيف / هاتف)", 
+    "url": "https://104.26.0" 
+  },
+  { 
+    "id": "3", 
+    "name": "BEIN SPORT 2 HD", 
+    "url": "https://104.26.0" 
+  },
+  { 
+    "id": "4", 
+    "name": "SSC SPORT 1 HD (الدوري السعودي)", 
+    "url": "https://104.26.0" 
+  },
+  { 
+    "id": "5", 
+    "name": "قنوات الكأس HD", 
+    "url": "https://104.26.0" 
+  }
+]
