@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, FlatList, TouchableOpacity, ActivityIndicator, Modal, Platform } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ScreenOrientation from 'expo-screen-orientation';
 
@@ -22,44 +22,43 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   const [loadingChannels, setLoadingChannels] = useState<boolean>(true);
   const [loadingVideo, setLoadingVideo] = useState<boolean>(false);
 
-  // إعداد القنوات محلياً لضمان سرعة الاستجابة وتفادي مشاكل الحظر الخارجي للروابط
-  const localChannels: Channel[] = [
+  // سيرفرات بث حية مخصصة ومباشرة مدمجة لتعمل فوراً وتظهر قائمة القنوات دون انتظار الإنترنت
+  const fallbackChannels: Channel[] = [
     {
-      "id": "1",
-      "name": "BEIN SPORT 1 HD",
-      "qualities": [
-        { "label": "عالية FHD", "url": "https://vodobox.net" },
-        { "label": "متوسطة SD", "url": "https://longtailvideo.com" }
+      id: "1",
+      name: "BEIN SPORT 1 HD",
+      qualities: [
+        { label: "جودة عالية HD", url: "https://hdmn.io" }
       ]
     },
     {
-      "id": "2",
-      "name": "BEIN SPORT 2 HD",
-      "qualities": [
-        { "label": "عالية FHD", "url": "https://vodobox.net" }
+      id: "2",
+      name: "BEIN SPORT 2 HD",
+      qualities: [
+        { label: "جودة عالية HD", url: "https://hdmn.io" }
       ]
     },
     {
-      "id": "3",
-      "name": "SSC SPORT 1 HD",
-      "qualities": [
-        { "label": "HD جودة", "url": "https://longtailvideo.com" }
+      id: "3",
+      name: "SSC SPORT 1 HD (الدوري السعودي)",
+      qualities: [
+        { label: "بث فوري", url: "https://longtailvideo.com" }
       ]
     },
     {
-      "id": "4",
-      "name": "قناة الكأس HD",
-      "qualities": [
-        { "label": "HD جودة", "url": "https://vodobox.net" }
+      id: "4",
+      name: "قناة الكأس الرياضية",
+      qualities: [
+        { label: "بث فوري", url: "https://vodobox.net" }
       ]
     }
   ];
 
   useEffect(() => {
-    // تحميل القنوات المحلية الفعالة فوراً لتخطي عقبة شاشة اللودنج البيضاء
-    setChannels(localChannels);
-    const firstChannel = localChannels[0];
-    if (firstChannel.qualities && firstChannel.qualities.length > 0) {
+    // تشغيل القنوات مباشرة دون انتظار اللودنج اللانهائي
+    setChannels(fallbackChannels);
+    const firstChannel = fallbackChannels[0];
+    if (firstChannel && firstChannel.qualities && firstChannel.qualities.length > 0) {
       setCurrentQualities(firstChannel.qualities);
       setCurrentUrl(firstChannel.qualities[0].url);
       setActiveQuality(firstChannel.qualities[0].label);
@@ -75,9 +74,8 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     {
       uri: currentUrl || 'https://',
       headers: {
-        'User-Agent': 'Yacine TV/3.0 (Android; Mobile)',
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36',
         'Referer': 'http://yacine-tv.net',
-        'Host': '104.26.0.214',
       },
     },
     (playerInstance) => {
@@ -105,9 +103,8 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     player.replace({
       uri: url,
       headers: {
-        'User-Agent': 'Yacine TV/3.0 (Android; Mobile)',
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36',
         'Referer': 'http://yacine-tv.net',
-        'Host': '104.26.0.214',
       },
     });
     setTimeout(() => setLoadingVideo(false), 500);
@@ -118,81 +115,79 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     onClose();
   };
 
-  if (loadingChannels) {
-    return (
-      <View style={styles.loadingScreen}>
-        <ActivityIndicator size="large" color="#ff1e27" />
-      </View>
-    );
-  }
-
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>قنوات ياسين تيفي المباشرة</Text>
-        <TouchableOpacity onPress={handleClosePlayer} style={styles.closeBtn}>
-          <Text style={styles.closeText}>رجوع ←</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.videoContainer}>
-        {loadingVideo || !currentUrl ? (
-          <ActivityIndicator size="large" color="#ff1e27" />
-        ) : (
-          <VideoView player={player} style={styles.video} allowsFullscreen allowsPictureInPicture />
-        )}
-      </View>
-
-      {currentQualities.length > 0 && (
-        <View style={styles.qualityContainer}>
-          <Text style={styles.qualityTitle}>الجودة:</Text>
-          {currentQualities.map((q) => (
-            <TouchableOpacity
-              key={q.label}
-              style={[styles.qualityBtn, activeQuality === q.label && styles.activeQualityBtn]}
-              onPress={() => {
-                setLoadingVideo(true);
-                changeQuality(q.url, q.label);
-              }}
-            >
-              <Text style={[styles.qualityBtnText, activeQuality === q.label && styles.activeQualityBtnText]}>
-                {q.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+    <Modal
+      animationType="slide"
+      transparent={false}
+      visible={true}
+      onRequestClose={handleClosePlayer}
+    >
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>قنوات ياسين تيفي المباشرة</Text>
+          <TouchableOpacity onPress={handleClosePlayer} style={styles.closeBtn}>
+            <Text style={styles.closeText}>رجوع ←</Text>
+          </TouchableOpacity>
         </View>
-      )}
 
-      <FlatList
-        data={channels}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContainer}
-        renderItem={({ item }) => {
-          const isSelected = currentQualities.length > 0 
-            ? currentQualities[0].url === item.qualities?.[0]?.url
-            : currentUrl === item.url;
-            
-          return (
-            <TouchableOpacity
-              style={[styles.item, isSelected && styles.activeItem]}
-              onPress={() => handleSelectChannel(item)}
-            >
-              <View style={styles.channelInfo}>
-                <Text style={styles.icon}>⚽</Text>
-                <Text style={styles.name}>{item.name}</Text>
-              </View>
-              <Text style={[styles.playIcon, isSelected && styles.activePlayIcon]}>▶</Text>
-            </TouchableOpacity>
-          );
-        }}
-      />
-    </View>
+        <View style={styles.videoContainer}>
+          {loadingVideo || !currentUrl ? (
+            <ActivityIndicator size="large" color="#ff1e27" />
+          ) : (
+            <VideoView player={player} style={styles.video} allowsFullscreen allowsPictureInPicture />
+          )}
+        </View>
+
+        {currentQualities.length > 0 && (
+          <View style={styles.qualityContainer}>
+            <Text style={styles.qualityTitle}>الجودة:</Text>
+            {currentQualities.map((q) => (
+              <TouchableOpacity
+                key={q.label}
+                style={[styles.qualityBtn, activeQuality === q.label && styles.activeQualityBtn]}
+                onPress={() => {
+                  setLoadingVideo(true);
+                  changeQuality(q.url, q.label);
+                }}
+              >
+                <Text style={[styles.qualityBtnText, activeQuality === q.label && styles.activeQualityBtnText]}>
+                  {q.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        <FlatList
+          data={channels}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContainer}
+          renderItem={({ item }) => {
+            const isSelected = currentQualities.length > 0 
+              ? currentQualities[0].url === item.qualities?.[0].url
+              : currentUrl === item.url;
+              
+            return (
+              <TouchableOpacity
+                style={[styles.item, isSelected && styles.activeItem]}
+                onPress={() => handleSelectChannel(item)}
+              >
+                <View style={styles.channelInfo}>
+                  <Text style={styles.icon}>⚽</Text>
+                  <Text style={styles.name}>{item.name}</Text>
+                </View>
+                <Text style={[styles.playIcon, isSelected && styles.activePlayIcon]}>▶</Text>
+              </TouchableOpacity>
+            );
+          }}
+        />
+      </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0b1220' }, 
-  loadingScreen: { flex: 1, backgroundColor: '#0b1220', justifyContent: 'center', alignItems: 'center' },
+  container: { flex: 1, backgroundColor: '#0b1220', paddingTop: Platform.OS === 'ios' ? 40 : 0 }, 
   header: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, backgroundColor: '#161f30', alignItems: 'center', borderBottomWidth: 1, borderColor: '#232e42' },
   headerTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   closeBtn: { backgroundColor: '#ff1e27', paddingVertical: 6, paddingHorizontal: 14, borderRadius: 6 },
@@ -210,7 +205,7 @@ const styles = StyleSheet.create({
   activeItem: { borderColor: '#ff1e27', backgroundColor: '#1f1924' },
   channelInfo: { flexDirection: 'row', alignItems: 'center' },
   icon: { fontSize: 18, marginRight: 12 },
-  name: { fontSize: 15, color: '#fff', fontWeight: '600', textAlign: 'left' },
+  name: { fontSize: 15, color: '#fff', fontWeight: '600', textAlign: 'left', marginRight: 10 },
   playIcon: { fontSize: 14, color: '#4a5568' },
   activePlayIcon: { color: '#ff1e27' }
 });
