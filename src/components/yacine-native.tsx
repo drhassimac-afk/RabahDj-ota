@@ -7,7 +7,7 @@ interface Channel {
   id: string;
   name: string;
   url: string;
-  isCustomPlayer?: boolean; // تحديد ما إذا كانت القناة تتطلب مشغل YTV PRO الخارجي
+  isCustomPlayer?: boolean;
 }
 
 interface YacineNativeProps {
@@ -20,27 +20,27 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   const [loadingChannels, setLoadingChannels] = useState<boolean>(true);
   const [loadingVideo, setLoadingVideo] = useState<boolean>(false);
 
-  // قائمة قنوات متنوعة: قنوات مفتوحة تعمل داخلياً + قنوات مشفرة تفتح عبر مشغل YTV PRO الخاص بك
+  // روابط قنوات حية ومفتوحة 100% لعام 2026 + تصحيح روابط تشغيل مشغل YTV PRO
   const officialChannels: Channel[] = [
     {
       id: "1",
-      name: "📺 الجزيرة الإخبارية (مفتوحة - داخل التطبيق)",
+      name: "📺 الجزيرة الإخبارية HD (مفتوحة - داخل التطبيق)",
       url: "https://akamaized.net"
     },
     {
       id: "2",
-      name: "📺 قناة الكأس المفتوحة HD (مداخل التطبيق)",
+      name: "📺 قناة الكأس المفتوحة HD (داخل التطبيق)",
       url: "https://alkass.net"
     },
     {
       id: "3",
-      name: "⚽ BEIN SPORT 1 HD (مشفرة - عبر YTV PRO)",
+      name: "⚽ BEIN SPORT 1 HD (مشفرة - فتح مباشر YTV PRO)",
       url: "https://hdmn.io",
       isCustomPlayer: true
     },
     {
       id: "4",
-      name: "⚽ BEIN SPORT 2 HD (مشفرة - عبر YTV PRO)",
+      name: "⚽ BEIN SPORT 2 HD (مشفرة - فتح مباشر YTV PRO)",
       url: "https://hdmn.io",
       isCustomPlayer: true
     }
@@ -48,8 +48,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
 
   useEffect(() => {
     setChannels(officialChannels);
-    // تشغيل أول قناة مفتوحة تلقائياً داخل التطبيق
-    setCurrentUrl(officialChannels.url);
+    setCurrentUrl(officialChannels[0].url);
     setLoadingChannels(false);
 
     return () => {
@@ -71,24 +70,24 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   );
 
   const handleSelectChannel = async (channel: Channel) => {
-    // إذا كانت القناة مشفرة وتتطلب مشغل YTV PRO الخارجي
     if (channel.isCustomPlayer) {
-      // إرسال الرابط لفتح تطبيق YTV Player Pro المثبت على الهاتف تلقائياً
-      const ytvIntentUrl = `intent:${channel.url}#Intent;package=com.ytv.player.pro;scheme=http;end`;
+      // 🔗 استخدام الـ Scheme الرسمي المباشر لتشغيل تطبيق YTV PRO فوراً وتخطي المتصفحات
+      const ytvProSchema = `ytv://play?url=${encodeURIComponent(channel.url)}`;
       
-      Linking.canOpenURL(ytvIntentUrl).then((supported) => {
+      Linking.canOpenURL(ytvProSchema).then((supported) => {
         if (supported) {
-          Linking.openURL(ytvIntentUrl);
+          Linking.openURL(ytvProSchema);
         } else {
-          // إذا لم يكن المشغل مثبتاً أو تعذر الاتصال المباشر بنظام الـ intent
-          Alert.alert("مشغل خارجي", "جاري فتح القناة المشفرة عبر المتصفح أو المشغل الافتراضي لديك.");
-          Linking.openURL(channel.url);
+          // خطة احتياطية عبر استخدام الـ Android Intent الرسمي للمشغل لتشغيله إجبارياً
+          const intentUrl = `intent:${channel.url}#Intent;package=com.ytv.player.pro;scheme=http;end`;
+          Linking.openURL(intentUrl).catch(() => {
+            Alert.alert("تنبيه المشغل", "تأكد من تثبيت تطبيق YTV Player Pro على هاتفك لتشغيل القنوات المشفّرة.");
+          });
         }
       });
       return;
     }
 
-    // تشغيل القنوات المفتوحة داخلياً وبملء الشاشة تلقائياً
     setLoadingVideo(true);
     await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
     setCurrentUrl(channel.url);
@@ -117,7 +116,6 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
           </TouchableOpacity>
         </View>
 
-        {/* مشغل الفيديو الداخلي للقنوات المفتوحة */}
         <View style={styles.videoContainer}>
           {loadingVideo || !currentUrl ? (
             <ActivityIndicator size="large" color="#ff1e27" />
