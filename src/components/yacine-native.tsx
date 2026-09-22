@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import * as ScreenOrientation from 'expo-screen-orientation';
 
 interface Channel {
   id: string;
   name: string;
   url: string;
+  qualities?: { label: string; url: string }[];
 }
 
 interface YacineNativeProps {
@@ -15,10 +17,11 @@ interface YacineNativeProps {
 export default function YacineNative({ onClose }: YacineNativeProps) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [currentUrl, setCurrentUrl] = useState<string>('');
+  const [currentQualities, setCurrentQualities] = useState<{ label: string; url: string }[]>([]);
+  const [activeQuality, setActiveQuality] = useState<string>('');
   const [loadingChannels, setLoadingChannels] = useState<boolean>(true);
   const [loadingVideo, setLoadingVideo] = useState<boolean>(false);
 
-  // 🔗 رابط ملف الـ Gist الخاص بك (استبدل XXXXXX برابطك الحقيقي لاحقاً إن أردت)
   const jsonUrl = 'https://githubusercontent.com';
 
   const fetchChannels = async () => {
@@ -26,7 +29,17 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
       const response = await fetch(jsonUrl);
       const data: Channel[] = await response.json();
       setChannels(data);
-      if (data.length > 0) setCurrentUrl(data[0].url);
+      
+      if (data.length > 0) {
+        const firstChannel = data[0];
+        if (firstChannel.qualities && firstChannel.qualities.length > 0) {
+          setCurrentQualities(firstChannel.qualities);
+          setCurrentUrl(firstChannel.qualities[0].url);
+          setActiveQuality(firstChannel.qualities[0].label);
+        } else {
+          setCurrentUrl(firstChannel.url);
+        }
+      }
     } catch (error) {
       console.error("Error fetching Yacine TV channels:", error);
     } finally {
@@ -36,6 +49,10 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
 
   useEffect(() => {
     fetchChannels();
+    // عند الخروج من المكون، يتم إرجاع الشاشة للوضع الطولي الافتراضي تلقائياً
+    return () => {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+    };
   }, []);
 
   const player = useVideoPlayer(
@@ -53,9 +70,24 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     }
   );
 
-  const handleSelectChannel = (url: string) => {
+  // دالة اختيار القناة وتدوير الشاشة تلقائياً للعرض بالعرض للمباراة
+  const handleSelectChannel = async (channel: Channel) => {
     setLoadingVideo(true);
+    // تدوير الشاشة لوضع ملء الشاشة العرضي (Landscape)
+    await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+
+    if (channel.qualities && channel.qualities.length > 0) {
+      setCurrentQualities(channel.qualities);
+      changeQuality(channel.qualities[0].url, channel.qualities[0].label);
+    } else {
+      setCurrentQualities([]);
+      changeQuality(channel.url, '');
+    }
+  };
+
+  const changeQuality = (url: string, label: string) => {
     setCurrentUrl(url);
+    setActiveQuality(label);
     player.replace({
       uri: url,
       headers: {
@@ -65,6 +97,12 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
       },
     });
     setTimeout(() => setLoadingVideo(false), 500);
+  };
+
+  // دالة التعامل مع الإغلاق للرجوع للوضع الطولي
+  const handleClosePlayer = async () => {
+    await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+    onClose();
   };
 
   if (loadingChannels) {
@@ -80,7 +118,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Yacine TV المباشر</Text>
-        <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+        <TouchableOpacity onPress={handleClosePlayer} style={styles.closeBtn}>
           <Text style={styles.closeText}>إغلاق</Text>
         </TouchableOpacity>
       </View>
@@ -93,18 +131,44 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
         )}
       </View>
 
+      {currentQualities.length > 0 && (
+        <View style={styles.qualityContainer}>
+          <Text style={styles.qualityTitle}>اختر الجودة: </Text>
+          {currentQualities.map((q) => (
+            <TouchableOpacity
+              key={q.label}
+              style={[styles.qualityBtn, activeQuality === q.label && styles.activeQualityBtn]}
+              onPress={() => {
+                setLoadingVideo(true);
+                changeQuality(q.url, q.label);
+              }}
+            >
+              <Text style={[styles.qualityBtnText, activeQuality === q.label && styles.activeQualityBtnText]}>
+                {q.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
       <FlatList
         data={channels}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.item, currentUrl === item.url && styles.activeItem]}
-            onPress={() => handleSelectChannel(item.url)}
-          >
-            <Text style={styles.icon}>📺</Text>
-            <Text style={styles.name}>{item.name}</Text>
-          </TouchableOpacity>
-        )}
+        renderItem={({ item }) => {
+          const isSelected = currentQualities.length > 0 
+            ? currentQualities[0].url === item.qualities?.[0].url
+            : currentUrl === item.url;
+            
+          return (
+            <TouchableOpacity
+              style={[styles.item, isSelected && styles.activeItem]}
+              onPress={() => handleSelectChannel(item)}
+            >
+              <Text style={styles.icon}>📺</Text>
+              <Text style={styles.name}>{item.name}</Text>
+            </TouchableOpacity>
+          );
+        }}
       />
     </View>
   );
@@ -119,6 +183,12 @@ const styles = StyleSheet.create({
   closeText: { color: '#ff0000', fontWeight: 'bold' },
   videoContainer: { width: '100%', height: 210, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
   video: { width: '100%', height: '100%' },
+  qualityContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 10, borderBottomWidth: 1, borderColor: '#eee' },
+  qualityTitle: { fontSize: 14, fontWeight: 'bold', color: '#666', marginRight: 10 },
+  qualityBtn: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 15, backgroundColor: '#f0f0f0', marginRight: 8 },
+  activeQualityBtn: { backgroundColor: '#ff0000' },
+  qualityBtnText: { color: '#333', fontSize: 12, fontWeight: '600' },
+  activeQualityBtnText: { color: '#fff' },
   item: { flexDirection: 'row', backgroundColor: '#fff', padding: 15, marginVertical: 4, marginHorizontal: 10, borderRadius: 8, alignItems: 'center' },
   activeItem: { borderColor: '#ff0000', borderWidth: 1, backgroundColor: '#ffe6e6' },
   icon: { fontSize: 18, marginRight: 10 },
