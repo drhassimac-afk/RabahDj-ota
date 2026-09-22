@@ -20,27 +20,27 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   const [loadingChannels, setLoadingChannels] = useState<boolean>(true);
   const [loadingVideo, setLoadingVideo] = useState<boolean>(false);
 
-  // روابط قنوات حية ومفتوحة 100% لعام 2026 + تصحيح روابط تشغيل مشغل YTV PRO
+  // روابط قنوات حية ومفتوحة 100% تعمل على مشغل التطبيق الداخلي
   const officialChannels: Channel[] = [
     {
       id: "1",
-      name: "📺 الجزيرة الإخبارية HD (مفتوحة - داخل التطبيق)",
+      name: "📺 الجزيرة الإخبارية HD (مباشر داخل التطبيق)",
       url: "https://akamaized.net"
     },
     {
       id: "2",
-      name: "📺 قناة الكأس المفتوحة HD (داخل التطبيق)",
+      name: "📺 قناة الكأس المفتوحة HD (مباشر داخل التطبيق)",
       url: "https://alkass.net"
     },
     {
       id: "3",
-      name: "⚽ BEIN SPORT 1 HD (مشفرة - فتح مباشر YTV PRO)",
+      name: "⚽ BEIN SPORT 1 HD (مشفرة - تشغيل تلقائي YTV PRO)",
       url: "https://hdmn.io",
       isCustomPlayer: true
     },
     {
       id: "4",
-      name: "⚽ BEIN SPORT 2 HD (مشفرة - فتح مباشر YTV PRO)",
+      name: "⚽ BEIN SPORT 2 HD (مشفرة - تشغيل تلقائي YTV PRO)",
       url: "https://hdmn.io",
       isCustomPlayer: true
     }
@@ -48,6 +48,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
 
   useEffect(() => {
     setChannels(officialChannels);
+    // تعيين القناة الأولى المفتوحة لتبدأ فوراً عند دخول الواجهة
     setCurrentUrl(officialChannels[0].url);
     setLoadingChannels(false);
 
@@ -71,19 +72,10 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
 
   const handleSelectChannel = async (channel: Channel) => {
     if (channel.isCustomPlayer) {
-      // 🔗 استخدام الـ Scheme الرسمي المباشر لتشغيل تطبيق YTV PRO فوراً وتخطي المتصفحات
-      const ytvProSchema = `ytv://play?url=${encodeURIComponent(channel.url)}`;
-      
-      Linking.canOpenURL(ytvProSchema).then((supported) => {
-        if (supported) {
-          Linking.openURL(ytvProSchema);
-        } else {
-          // خطة احتياطية عبر استخدام الـ Android Intent الرسمي للمشغل لتشغيله إجبارياً
-          const intentUrl = `intent:${channel.url}#Intent;package=com.ytv.player.pro;scheme=http;end`;
-          Linking.openURL(intentUrl).catch(() => {
-            Alert.alert("تنبيه المشغل", "تأكد من تثبيت تطبيق YTV Player Pro على هاتفك لتشغيل القنوات المشفّرة.");
-          });
-        }
+      // الـ Intent الرسمي المدعوم لفتح تطبيق YTV PRO وحقن الرابط مباشرة
+      const intentUrl = `intent:${channel.url}#Intent;package=com.ytv.player.pro;scheme=http;end`;
+      Linking.openURL(intentUrl).catch(() => {
+        Alert.alert("تنبيه المشغل", "الرجاء التأكد من تثبيت تطبيق YTV Player Pro على الهاتف لتشغيل المباريات المشفّرة.");
       });
       return;
     }
@@ -105,6 +97,14 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
     onClose();
   };
+
+  if (loadingChannels) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#ff1e27" />
+      </View>
+    );
+  }
 
   return (
     <Modal animationType="slide" transparent={false} visible={true} onRequestClose={handleClosePlayer}>
@@ -151,6 +151,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0b1220' }, 
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0b1220' },
   header: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, backgroundColor: '#161f30', alignItems: 'center', borderBottomWidth: 1, borderColor: '#232e42' },
   headerTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   closeBtn: { backgroundColor: '#ff1e27', paddingVertical: 6, paddingHorizontal: 14, borderRadius: 6 },
