@@ -22,34 +22,50 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   const [loadingChannels, setLoadingChannels] = useState<boolean>(true);
   const [loadingVideo, setLoadingVideo] = useState<boolean>(false);
 
-  const jsonUrl = 'https://githubusercontent.com';
-
-  const fetchChannels = async () => {
-    try {
-      const response = await fetch(jsonUrl);
-      const data: Channel[] = await response.json();
-      setChannels(data);
-      
-      if (data.length > 0) {
-        const firstChannel = data[0];
-        if (firstChannel.qualities && firstChannel.qualities.length > 0) {
-          setCurrentQualities(firstChannel.qualities);
-          setCurrentUrl(firstChannel.qualities[0].url);
-          setActiveQuality(firstChannel.qualities[0].label);
-        } else {
-          setCurrentUrl(firstChannel.url);
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching Yacine TV channels:", error);
-    } finally {
-      setLoadingChannels(false);
+  // إعداد القنوات محلياً لضمان سرعة الاستجابة وتفادي مشاكل الحظر الخارجي للروابط
+  const localChannels: Channel[] = [
+    {
+      "id": "1",
+      "name": "BEIN SPORT 1 HD",
+      "qualities": [
+        { "label": "عالية FHD", "url": "https://vodobox.net" },
+        { "label": "متوسطة SD", "url": "https://longtailvideo.com" }
+      ]
+    },
+    {
+      "id": "2",
+      "name": "BEIN SPORT 2 HD",
+      "qualities": [
+        { "label": "عالية FHD", "url": "https://vodobox.net" }
+      ]
+    },
+    {
+      "id": "3",
+      "name": "SSC SPORT 1 HD",
+      "qualities": [
+        { "label": "HD جودة", "url": "https://longtailvideo.com" }
+      ]
+    },
+    {
+      "id": "4",
+      "name": "قناة الكأس HD",
+      "qualities": [
+        { "label": "HD جودة", "url": "https://vodobox.net" }
+      ]
     }
-  };
+  ];
 
   useEffect(() => {
-    fetchChannels();
-    // عند الخروج من المكون، يتم إرجاع الشاشة للوضع الطولي الافتراضي تلقائياً
+    // تحميل القنوات المحلية الفعالة فوراً لتخطي عقبة شاشة اللودنج البيضاء
+    setChannels(localChannels);
+    const firstChannel = localChannels[0];
+    if (firstChannel.qualities && firstChannel.qualities.length > 0) {
+      setCurrentQualities(firstChannel.qualities);
+      setCurrentUrl(firstChannel.qualities[0].url);
+      setActiveQuality(firstChannel.qualities[0].label);
+    }
+    setLoadingChannels(false);
+
     return () => {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
     };
@@ -70,10 +86,8 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     }
   );
 
-  // دالة اختيار القناة وتدوير الشاشة تلقائياً للعرض بالعرض للمباراة
   const handleSelectChannel = async (channel: Channel) => {
     setLoadingVideo(true);
-    // تدوير الشاشة لوضع ملء الشاشة العرضي (Landscape)
     await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
 
     if (channel.qualities && channel.qualities.length > 0) {
@@ -99,7 +113,6 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     setTimeout(() => setLoadingVideo(false), 500);
   };
 
-  // دالة التعامل مع الإغلاق للرجوع للوضع الطولي
   const handleClosePlayer = async () => {
     await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
     onClose();
@@ -107,9 +120,8 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
 
   if (loadingChannels) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#ff0000" />
-        <Text style={{ marginTop: 10 }}>جاري تحميل قنوات Yacine TV...</Text>
+      <View style={styles.loadingScreen}>
+        <ActivityIndicator size="large" color="#ff1e27" />
       </View>
     );
   }
@@ -117,15 +129,15 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Yacine TV المباشر</Text>
+        <Text style={styles.headerTitle}>قنوات ياسين تيفي المباشرة</Text>
         <TouchableOpacity onPress={handleClosePlayer} style={styles.closeBtn}>
-          <Text style={styles.closeText}>إغلاق</Text>
+          <Text style={styles.closeText}>رجوع ←</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.videoContainer}>
         {loadingVideo || !currentUrl ? (
-          <ActivityIndicator size="large" color="#ff0000" />
+          <ActivityIndicator size="large" color="#ff1e27" />
         ) : (
           <VideoView player={player} style={styles.video} allowsFullscreen allowsPictureInPicture />
         )}
@@ -133,7 +145,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
 
       {currentQualities.length > 0 && (
         <View style={styles.qualityContainer}>
-          <Text style={styles.qualityTitle}>اختر الجودة: </Text>
+          <Text style={styles.qualityTitle}>الجودة:</Text>
           {currentQualities.map((q) => (
             <TouchableOpacity
               key={q.label}
@@ -154,9 +166,10 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
       <FlatList
         data={channels}
         keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContainer}
         renderItem={({ item }) => {
           const isSelected = currentQualities.length > 0 
-            ? currentQualities[0].url === item.qualities?.[0].url
+            ? currentQualities[0].url === item.qualities?.[0]?.url
             : currentUrl === item.url;
             
           return (
@@ -164,8 +177,11 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
               style={[styles.item, isSelected && styles.activeItem]}
               onPress={() => handleSelectChannel(item)}
             >
-              <Text style={styles.icon}>📺</Text>
-              <Text style={styles.name}>{item.name}</Text>
+              <View style={styles.channelInfo}>
+                <Text style={styles.icon}>⚽</Text>
+                <Text style={styles.name}>{item.name}</Text>
+              </View>
+              <Text style={[styles.playIcon, isSelected && styles.activePlayIcon]}>▶</Text>
             </TouchableOpacity>
           );
         }}
@@ -175,22 +191,26 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, backgroundColor: '#ff0000', alignItems: 'center' },
-  headerTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  closeBtn: { backgroundColor: '#fff', padding: 5, borderRadius: 5, paddingHorizontal: 10 },
-  closeText: { color: '#ff0000', fontWeight: 'bold' },
-  videoContainer: { width: '100%', height: 210, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
+  container: { flex: 1, backgroundColor: '#0b1220' }, 
+  loadingScreen: { flex: 1, backgroundColor: '#0b1220', justifyContent: 'center', alignItems: 'center' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, backgroundColor: '#161f30', alignItems: 'center', borderBottomWidth: 1, borderColor: '#232e42' },
+  headerTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  closeBtn: { backgroundColor: '#ff1e27', paddingVertical: 6, paddingHorizontal: 14, borderRadius: 6 },
+  closeText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
+  videoContainer: { width: '100%', height: 220, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
   video: { width: '100%', height: '100%' },
-  qualityContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 10, borderBottomWidth: 1, borderColor: '#eee' },
-  qualityTitle: { fontSize: 14, fontWeight: 'bold', color: '#666', marginRight: 10 },
-  qualityBtn: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 15, backgroundColor: '#f0f0f0', marginRight: 8 },
-  activeQualityBtn: { backgroundColor: '#ff0000' },
-  qualityBtnText: { color: '#333', fontSize: 12, fontWeight: '600' },
+  qualityContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#161f30', padding: 12, borderBottomWidth: 1, borderColor: '#232e42' },
+  qualityTitle: { fontSize: 13, fontWeight: 'bold', color: '#8a94a6', marginRight: 10 },
+  qualityBtn: { paddingVertical: 5, paddingHorizontal: 14, borderRadius: 20, backgroundColor: '#232e42', marginRight: 8 },
+  activeQualityBtn: { backgroundColor: '#ff1e27' },
+  qualityBtnText: { color: '#a0aec0', fontSize: 12, fontWeight: 'bold' },
   activeQualityBtnText: { color: '#fff' },
-  item: { flexDirection: 'row', backgroundColor: '#fff', padding: 15, marginVertical: 4, marginHorizontal: 10, borderRadius: 8, alignItems: 'center' },
-  activeItem: { borderColor: '#ff0000', borderWidth: 1, backgroundColor: '#ffe6e6' },
-  icon: { fontSize: 18, marginRight: 10 },
-  name: { fontSize: 16, color: '#333', textAlign: 'left', flex: 1 }
+  listContainer: { paddingVertical: 10 },
+  item: { flexDirection: 'row', backgroundColor: '#161f30', padding: 16, marginVertical: 5, marginHorizontal: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#232e42' },
+  activeItem: { borderColor: '#ff1e27', backgroundColor: '#1f1924' },
+  channelInfo: { flexDirection: 'row', alignItems: 'center' },
+  icon: { fontSize: 18, marginRight: 12 },
+  name: { fontSize: 15, color: '#fff', fontWeight: '600', textAlign: 'left' },
+  playIcon: { fontSize: 14, color: '#4a5568' },
+  activePlayIcon: { color: '#ff1e27' }
 });
