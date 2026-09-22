@@ -138,7 +138,6 @@ function Index() {
   const [ready, setReady] = useState(false);
   const [showWalkie, setShowWalkie] = useState(false);
   const [showYacine, setShowYacine] = useState(false);
-  const [showYacine, setShowYacine] = useState(false);
   const [isPttRecording, setIsPttRecording] = useState(false);
   const [lastSpeaker, setLastSpeaker] = useState<string | null>(null);
 
@@ -150,7 +149,6 @@ function Index() {
   const [nativeFiles, setNativeFiles] = useState<NativeFileEntry[]>([]);
 
   const [showCinema, setShowCinema] = useState(false);
-  const [showYacine, setShowYacine] = useState(false);
   const [cinemaCategory, setCinemaCategory] = useState<CinemaCategory>('movies');
   const [cinemaHistory, setCinemaHistory] = useState<string[]>([]);
   const [isCinemaPlaying, setIsCinemaPlaying] = useState(false);
@@ -801,7 +799,8 @@ function Index() {
 
   return (
     showYacine ? <YacineNative onClose={() => setShowYacine(false)} /> :
-    showYacine ? <YacineNative onClose={() => setShowYacine(false)} /> :
+    
+    
     <SafeAreaView style={styles.container}>
       <HtmlHost
         ref={hostRef}
