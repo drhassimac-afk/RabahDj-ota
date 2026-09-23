@@ -867,7 +867,7 @@ function Index() {
 
       {showCinema && (
         <View style={isCinemaPlaying ? styles.overlayTransparent : styles.overlayFill}>
-      <TouchableOpacity style={{backgroundColor:'#ff1e27', padding:14, marginVertical:8, marginHorizontal:16, borderRadius:12, alignItems:'center', flexDirection:'row', justifyContent:'center', shadowColor:'#000', shadowOffset:{width:0,height:2}, shadowOpacity:0.25, shadowRadius:3.84, elevation:5}} onPress={() => setShowYacine(true)}><Text style={{color:'#fff', fontWeight:'bold', fontSize:15, marginRight:8}}>📺</Text><Text style={{color:'#fff', fontWeight:'bold', fontSize:15}}>قنوات ياسين تيفي المباشرة</Text></TouchableOpacity>
+      <TouchableOpacity style={{backgroundColor:'#ff1e27', padding:14, marginVertical:8, marginHorizontal:16, borderRadius:12, alignItems:'center', flexDirection:'row', justifyContent:'center', shadowColor:'#000', shadowOffset:{width:0,height:2}, shadowOpacity:0.25, shadowRadius:3.84, elevation:5}} onPress={() => setShowYacine(true)}><Text style={{color:'#fff', fontWeight:'bold', fontSize:15, marginRight:8}}>📺</Text><Text style={{color:'#fff', fontWeight:'bold', fontSize:15}}>قنوات المباشرة Rabah</Text></TouchableOpacity>
       <CinemaNative
             category={cinemaCategory}
             history={cinemaHistory}
