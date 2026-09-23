@@ -8,6 +8,8 @@ on:
 jobs:
   compile:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # منح السيرفر صلاحية إنشاء Release رسمي داخل مستودعك
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -54,27 +56,17 @@ jobs:
           cd android
           ./gradlew assembleRelease --no-daemon -Psentry.disableAutoUpload=true
 
-      - name: Secure External Artifact Upload
+      - name: Rename and Prepare APK
         run: |
           APK_FILE=$(find android/app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
-          if [ ! -z "$APK_FILE" ]; then
-            echo "[*] Target file verified at: $APK_FILE"
-            echo "[*] Transmitting via secure stable tunneling..."
-            
-            # محاولة الرفع الأولى عبر السيرفر الرئيسي المستقر
-            UPLOAD_URL=$(curl --upload-file "$APK_FILE" https://transfer.sh)
-            
-            # خطة احتياطية في حال فشل الـ DNS أو الشبكة في السيرفر الأول
-            if [ -z "$UPLOAD_URL" ] || [[ "$UPLOAD_URL" != http* ]]; then
-              echo "[*] Primary server down, shifting to fallback servers..."
-              UPLOAD_URL=$(curl -F "file=@$APK_FILE" https://file.io | jq -r '.link')
-            fi
+          cp "$APK_FILE" ./RabahDj-YacineTV.apk
 
-            echo "======================================================="
-            echo "🔥 رابط تحميل تطبيق الـ APK الفوري والمكتمل الخاص بك هو:"
-            echo "$UPLOAD_URL"
-            echo "======================================================="
-          else
-            echo "[!] Compiling failed, APK not found!"
-            exit 1
-          fi
+      - name: Create Official GitHub Release and Upload APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: RabahDj YacineTV Release v1.0.${{ github.run_number }}
+          draft: false
+          prerelease: false
+          files: ./RabahDj-YacineTV.apk
+          token: ${{ secrets.GITHUB_TOKEN }}
