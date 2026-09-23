@@ -32,7 +32,6 @@ jobs:
 
       - name: Inject Sentry Disable into Gradle
         run: |
-          # حقن كود التعطيل مباشرة بعد إنشاء المجلد وقبل التجميع لضمان عدم حذفه
           sed -i '/apply from: "..\/node_modules\/@sentry\/react-native\/sentry.gradle"/i project.ext.sentry = [ disableAutoUpload: true ]' android/app/build.gradle
 
       - name: Add debug signing configuration
@@ -48,15 +47,26 @@ jobs:
                   signingConfig signingConfigs.release
           }' android/app/build.gradle
 
-      - name: Build Release APK Bundle (Strict Sentry Override)
+      - name: Build Release APK Bundle
         env:
           SENTRY_DISABLE_AUTO_UPLOAD: 'true'
         run: |
           cd android
           ./gradlew assembleRelease --no-daemon -Psentry.disableAutoUpload=true
 
-      - name: Upload Clean Compiled APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: RabahDj-YacineTV-APK
-          path: android/app/build/outputs/apk/release/*.apk
+      - name: Upload APK to Free External Hosting (Taps transfer.sh)
+        run: |
+          APK_PATH=$(find android/app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
+          if [ ! -z "$APK_PATH" ]; then
+            echo "[*] Found compiled APK at: $APK_PATH"
+            echo "[*] Uploading to transfer.sh due to GitHub storage quota limit..."
+            # رفع الملف والحصول على رابط تحميل مباشر وصافي يتخطى حدود المساحة كلياً
+            UPLOAD_URL=$(curl --upload-file "$APK_PATH" https://transfer.sh)
+            echo "======================================================="
+            echo "🔥 رابط تحميل تطبيق الـ APK الفوري والمكتمل الخاص بك هو:"
+            echo "$UPLOAD_URL"
+            echo "======================================================="
+          else
+            echo "[!] APK file not found!"
+            exit 1
+          fi
