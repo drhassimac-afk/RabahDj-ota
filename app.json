@@ -55,7 +55,6 @@
       "expo-status-bar",
       "expo-web-browser",
       "expo-asset",
-      "@sentry/react-native",
       "expo-video"
     ],
     "experiments": {
