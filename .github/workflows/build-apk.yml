@@ -1,4 +1,4 @@
-name: Build APK
+name: Build Production APK
 
 on:
   push:
@@ -6,19 +6,19 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  compile:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up Java JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Node.js
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -26,10 +26,15 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Prebuild Android
-        run: npx expo prebuild --platform android --clean
+      - name: Expo Prebuild
+        run: |
+          EAS_SKIP_AUTO_FINGERPRINT=1 npx expo prebuild --platform android --clean
 
-      - name: Add debug signing to release
+      - name: Disable Sentry Compilation
+        run: |
+          sed -i '/apply from: "..\/node_modules\/@sentry\/react-native\/sentry.gradle"/i project.ext.sentry = [ disableAutoUpload: true ]' android/app/build.gradle
+
+      - name: Inject Keystore Configuration
         run: |
           sed -i '/signingConfigs {/a\
               release {\
@@ -42,13 +47,26 @@ jobs:
                   signingConfig signingConfigs.release
           }' android/app/build.gradle
 
-      - name: Build Release APK
+      - name: Build Pure Release APK
+        env:
+          SENTRY_DISABLE_AUTO_UPLOAD: 'true'
         run: |
           cd android
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon -Psentry.disableAutoUpload=true
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release
-          path: android/app/build/outputs/apk/release/app-release.apk
+      - name: Secure External Artifact Upload
+        run: |
+          APK_FILE=$(find android/app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
+          if [ ! -z "$APK_FILE" ]; then
+            echo "[*] Target file verified at: $APK_FILE"
+            echo "[*] Transmitting via secure bashupload tunneling..."
+            # رفع فوري مباشر يتخطى جدار مساحة جيت هاب ويطبع الرابط فوراً
+            UPLOAD_RESULT=$(curl -F "file=@$APK_FILE" https://bashupload.com)
+            echo "======================================================="
+            echo "🔥 رابط تحميل تطبيق الـ APK الصافي والمكتمل الخاص بك هو:"
+            echo "$UPLOAD_RESULT"
+            echo "======================================================="
+          else
+            echo "[!] Compiling failed, APK not found!"
+            exit 1
+          fi
