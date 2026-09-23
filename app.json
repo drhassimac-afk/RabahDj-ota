@@ -19,6 +19,7 @@
         "backgroundColor": "#0b1220",
         "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
+      "usesCleartextTraffic": true,
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",

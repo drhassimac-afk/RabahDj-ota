@@ -19,19 +19,13 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   const [currentUrl, setCurrentUrl] = useState<string>('');
   const [loadingVideo, setLoadingVideo] = useState<boolean>(false);
 
-  // سلة قنوات مفتوحة ومستقرة تماماً ومثبتة محلياً لتعمل فوراً بلمحة بصر
   const staticChannels: Channel[] = [
-    // 🎬 باقة الأفلام والترفيه المفتوحة
     { id: "1", name: "🎬 MBC 2 HD (أفلام هوليوود)", url: "https://vdo.id", category: "أفلام وترفيه" },
-    { id: "2", name: "🎬 MBC Action HD (أفلام حركة ومصارعة)", url: "https://vdo.id", category: "أفلام وترفيه" },
+    { id: "2", name: "🎬 MBC Action HD (حركة ومصارعة)", url: "https://vdo.id", category: "أفلام وترفيه" },
     { id: "3", name: "🎬 MBC Max HD (أفلام منوعة)", url: "https://vdo.id", category: "أفلام وترفيه" },
     { id: "4", name: "🎬 روتانا سينما (أفلام عربية)", url: "https://chb.sc", category: "أفلام وترفيه" },
-
-    // 🦁 باقة الوثائقيات والطبيعة
     { id: "5", name: "🦁 ناشيونال جيوغرافيك أبوظبي HD", url: "https://vdo.id", category: "وثائقيات" },
     { id: "6", name: "🌍 الجزيرة الوثائقية HD", url: "https://akamaized.net", category: "وثائقيات" },
-
-    // ⚽ باقة الرياضة المفتوحة الميسّرة
     { id: "7", name: "⚽ قناة الكأس الرياضية One HD", url: "https://alkass.net", category: "رياضة مفتوحة" },
     { id: "8", name: "⚽ أبوظبي الرياضية 1 HD", url: "https://akamaized.net", category: "رياضة مفتوحة" },
     { id: "9", name: "⚽ دبي الرياضية HD", url: "https://akamaized.net", category: "رياضة مفتوحة" },
@@ -39,10 +33,8 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   ];
 
   useEffect(() => {
-    // تحميل القنوات الثابتة فوراً بدون شاشات انتظار لانهائية لشبكة الإنترنت
     setChannels(staticChannels);
-    setCurrentUrl(staticChannels[0].url); // تشغيل أول قناة أفلام تلقائياً
-
+    setCurrentUrl(staticChannels[0].url);
     return () => {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
     };
@@ -61,7 +53,6 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
 
   const handleSelectChannel = async (channel: Channel) => {
     setLoadingVideo(true);
-    // تدوير الشاشة لوضع ملء الشاشة الأفقي تلقائياً لمشاهدة الفيلم أو المباراة
     await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
     setCurrentUrl(channel.url);
     player.replace({ uri: channel.url, headers: { 'User-Agent': 'Mozilla/5.0' } });
@@ -76,14 +67,14 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   return (
     <Modal animationType="slide" transparent={false} visible={true} onRequestClose={handleClosePlayer}>
       <View style={styles.container}>
+        {/* تغيير اسم اللافتة هنا لتكون احترافية وباسمك المخصص */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>📺 باقة القنوات الترفيهية المفتوحة</Text>
+          <Text style={styles.headerTitle}>📺 RabahDj تيفي المباشر</Text>
           <TouchableOpacity onPress={handleClosePlayer} style={styles.closeBtn}>
             <Text style={styles.closeText}>رجوع ←</Text>
           </TouchableOpacity>
         </View>
 
-        {/* مشغل الفيديو الداخلي المستقر */}
         <View style={styles.videoContainer}>
           {loadingVideo || !currentUrl ? (
             <ActivityIndicator size="large" color="#ff1e27" />
@@ -92,7 +83,6 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
           )}
         </View>
 
-        {/* عرض القنوات فوراً بدون انتظار */}
         <FlatList
           data={channels}
           keyExtractor={(item) => item.id}
