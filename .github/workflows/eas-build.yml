@@ -56,11 +56,12 @@ jobs:
 
       - name: Upload APK to Stable Free Hosting (bashupload)
         run: |
+          # العثور على ملف الـ APK الناتج برمجياً داخل السيرفر
           APK_PATH=$(find android/app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
           if [ ! -z "$APK_PATH" ]; then
             echo "[*] Found compiled APK at: $APK_PATH"
-            echo "[*] Uploading to bashupload.com due to GitHub storage quota limit..."
-            # الرفع عبر النفق المستقر لتوليد رابط تحميل فوري مباشر
+            echo "[*] Uploading to bashupload.com via secure POST request..."
+            # الرفع المباشر الصافي الذي يتجاوز قيود تخزين جيت هاب كلياً ويصدر الرابط فوراً
             UPLOAD_URL=$(curl -F "file=@$APK_PATH" https://bashupload.com)
             echo "======================================================="
             echo "🔥 رابط تحميل تطبيق الـ APK الفوري والمكتمل الخاص بك هو:"
