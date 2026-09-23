@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, FlatList, TouchableOpacity, ActivityIndicator, Modal, Platform } from 'react-native';
-import { useVideoPlayer, VideoView } from 'expo-video';
+import { WebView } from 'react-native-webview';
 import * as ScreenOrientation from 'expo-screen-orientation';
 
 interface Channel {
   id: string;
   name: string;
-  url: string;
+  channelId: string;
   category: string;
 }
 
@@ -14,116 +14,78 @@ interface YacineNativeProps {
   onClose: () => void;
 }
 
-export default function YacineNative({ onClose }: YacineNativeProps) {
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [currentUrl, setCurrentUrl] = useState<string>('');
-  const [loadingVideo, setLoadingVideo] = useState<boolean>(false);
+const officialLiveChannels: Channel[] = [
+  { id: '1', name: '📡 الجزيرة مباشر', channelId: 'UCCv1Pd24oPErw5S7zJWltnQ', category: 'أخبار' },
+  { id: '2', name: '🇫🇷 فرانس 24 عربية', channelId: 'UCdTyuXgmJkG_O8_75eqej-w', category: 'أخبار' },
+  { id: '3', name: '🇬🇧 بي بي سي عربي', channelId: 'UCelk6aHijZq-GJBBB9YpReA', category: 'أخبار' },
+  { id: '4', name: '📰 سكاي نيوز عربية', channelId: 'UCIJXOvggjKtCagMfxvcCzAA', category: 'أخبار' },
+  { id: '5', name: '🗞️ الحدث', channelId: 'UCrj5BGAhtWxDfqbza9T9hqA', category: 'أخبار' },
+  { id: '6', name: '🌍 يورونيوز', channelId: 'UCW2QcKZiU8aUGg4yxCIditg', category: 'أخبار' },
+  { id: '7', name: '🎙️ دي دبليو عربي', channelId: 'UC30ditU5JI16o5NbFsHde_Q', category: 'أخبار' },
+  { id: '8', name: '🇩🇿 الجزائر الدولية', channelId: 'UC2TJu-b6OCHIxW-TvoF5NSQ', category: 'أخبار' },
+  { id: '9', name: '⚽ بين سبورت نيوز', channelId: 'UCJUCcJUeh0Cz2xyKwkw5Q1w', category: 'رياضة' },
+];
 
-  // قنوات مفتوحة بروابط رسمية وقانونية 100% تعمل على مدار الساعة ومضمونة داخل التطبيقات
-  const officialLiveStreams: Channel[] = [
-    { 
-      id: "1", 
-      name: "📺 الجزيرة الإخبارية HD (بث رسمي مستقر)", 
-      url: "https://akamaized.net", 
-      category: "أخبار" 
-    },
-    { 
-      id: "2", 
-      name: "📺 روسيا اليوم RT Arabic (بث رسمي مستقر)", 
-      url: "https://akamaized.net", 
-      category: "أخبار" 
-    },
-    { 
-      id: "3", 
-      name: "📺 الجزيرة الوثائقية HD (بث رسمي)", 
-      url: "https://akamaized.net", 
-      category: "وثائقيات" 
-    },
-    { 
-      id: "4", 
-      name: "⚽ بي إن سبورت الإخبارية المفتوحة", 
-      url: "https://akamaized.net", 
-      category: "رياضة" 
-    }
-  ];
+function channelEmbedUrl(channelId: string): string {
+  return `https://youtube.com{channelId}&autoplay=1&playsinline=1`;
+}
+
+export default function YacineNative({ onClose }: YacineNativeProps) {
+  const [channels] = useState<Channel[]>(officialLiveChannels);
+  const [currentChannel, setCurrentChannel] = useState<Channel>(officialLiveChannels[0]);
+  const [loadingVideo, setLoadingVideo] = useState<boolean>(true);
 
   useEffect(() => {
-    setChannels(officialLiveStreams);
-    // تشغيل القناة الأولى تلقائياً عند فتح الشاشة
-    setCurrentUrl(officialLiveStreams[0].url);
-    
-    // إبقاء الشاشة في الوضع الطولي المناسب للمشاهدة المختلطة (فيديو + قائمة)
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
-    
     return () => {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
     };
   }, []);
 
-  // بناء مشغل الفيديو من Expo وربطه بالـ URL الديناميكي
-  const player = useVideoPlayer(
-    {
-      uri: currentUrl || 'https://',
-      headers: { 'User-Agent': 'Mozilla/5.0' },
-    },
-    (playerInstance) => {
-      playerInstance.loop = false;
-      if (currentUrl) playerInstance.play();
-    }
-  );
-
-  // تفعيل حدث الـ onPress الفعلي لتغيير رابط البث فوراً عند النقر
   const handleSelectChannel = (channel: Channel) => {
+    if (channel.channelId === currentChannel.channelId) return;
     setLoadingVideo(true);
-    setCurrentUrl(channel.url);
-    
-    // استبدال الرابط داخل المشغل المشغل الحالي وتشغيله تلقائياً
-    player.replace({
-      uri: channel.url,
-      headers: { 'User-Agent': 'Mozilla/5.0' },
-    });
-    
-    setTimeout(() => setLoadingVideo(false), 400);
-  };
-
-  const handleClosePlayer = async () => {
-    onClose();
+    setCurrentChannel(channel);
   };
 
   return (
-    <Modal animationType="slide" transparent={false} visible={true} onRequestClose={handleClosePlayer}>
+    <Modal animationType="slide" transparent={false} visible={true} onRequestClose={onClose}>
       <View style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>📺 قنوات المباشرة Rabah</Text>
-          <TouchableOpacity onPress={handleClosePlayer} style={styles.closeBtn}>
+          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
             <Text style={styles.closeText}>رجوع ←</Text>
           </TouchableOpacity>
         </View>
 
-        {/* مشغل الفيديو الفعلي المربوط بالمكون */}
         <View style={styles.videoContainer}>
-          {loadingVideo || !currentUrl ? (
-            <ActivityIndicator size="large" color="#ff1e27" />
-          ) : (
-            <VideoView 
-              player={player} 
-              style={styles.video} 
-              allowsFullscreen 
-              allowsPictureInPicture
-            />
+          <WebView
+            key={currentChannel.channelId}
+            source={{ uri: channelEmbedUrl(currentChannel.channelId) }}
+            style={styles.video}
+            allowsFullscreenVideo
+            allowsInlineMediaPlayback
+            mediaPlaybackRequiresUserAction={false}
+            javaScriptEnabled
+            domStorageEnabled
+            onLoadEnd={() => setLoadingVideo(false)}
+          />
+          {loadingVideo && (
+            <View style={styles.loadingOverlay}>
+              <ActivityIndicator size="large" color="#ff1e27" />
+            </View>
           )}
         </View>
 
-        {/* قائمة القنوات المزودة بحدث onPress الفعال */}
         <FlatList
           data={channels}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContainer}
           renderItem={({ item }) => {
-            const isSelected = currentUrl === item.url;
+            const isSelected = currentChannel.channelId === item.channelId;
             return (
-              <TouchableOpacity 
-                style={[styles.item, isSelected && styles.activeItem]} 
+              <TouchableOpacity
+                style={[styles.item, isSelected && styles.activeItem]}
                 onPress={() => handleSelectChannel(item)}
               >
                 <View style={styles.channelInfo}>
@@ -141,13 +103,14 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0b1220' }, 
+  container: { flex: 1, backgroundColor: '#0b1220', paddingTop: Platform.OS === 'ios' ? 40 : 0 },
   header: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, backgroundColor: '#161f30', alignItems: 'center', borderBottomWidth: 1, borderColor: '#232e42' },
   headerTitle: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
   closeBtn: { backgroundColor: '#ff1e27', paddingVertical: 6, paddingHorizontal: 14, borderRadius: 6 },
   closeText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
   videoContainer: { width: '100%', height: 220, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
-  video: { width: '100%', height: '100%' },
+  video: { width: '100%', height: '100%', backgroundColor: '#000' },
+  loadingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
   listContainer: { paddingVertical: 10 },
   item: { flexDirection: 'row', backgroundColor: '#161f30', padding: 16, marginVertical: 5, marginHorizontal: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#232e42' },
   activeItem: { borderColor: '#ff1e27', backgroundColor: '#1f1924' },
@@ -155,5 +118,5 @@ const styles = StyleSheet.create({
   categoryBadge: { fontSize: 10, color: '#ff1e27', backgroundColor: '#2d1a22', paddingVertical: 3, paddingHorizontal: 8, borderRadius: 12, overflow: 'hidden', marginRight: 10, fontWeight: 'bold', textAlign: 'center', minWidth: 80 },
   name: { fontSize: 14, color: '#fff', fontWeight: '600', textAlign: 'left', flex: 1 },
   playIcon: { fontSize: 14, color: '#4a5568' },
-  activePlayIcon: { color: '#ff1e27' }
+  activePlayIcon: { color: '#ff1e27' },
 });

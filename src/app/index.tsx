@@ -1,4 +1,3 @@
-import YacineNative from '@/components/yacine-native';
 import * as Sharing from 'expo-sharing';
 // import * as Notifications from 'expo-notifications';
 const Notifications = { setNotificationHandler: () => {}, setNotificationChannelAsync: async () => {}, getPermissionsAsync: async () => ({ status: 'granted' }), requestPermissionsAsync: async () => {}, scheduleNotificationAsync: async () => {} };
@@ -13,7 +12,8 @@ import { RABAHDJ_HTML } from '../htmlContent';
 import WalkieNative from '@/components/walkie-native';
 import LiveNative from '@/components/live-native';
 import FilesNative, { type NativeFileEntry } from '@/components/files-native';
-import CinemaNative from '@/components/cinema-native';
+import CinemaNative;
+import YacineNative from '../components/yacine-native'; from '@/components/cinema-native';
 import GamesNative, { type XoState, type ChessState } from '@/components/games-native';
 import ChatNative, { type ChatMessage } from '@/components/chat-native';
 import NearbyNative from '@/components/nearby-native';
@@ -800,6 +800,7 @@ function Index() {
 
   return (
     showYacine ? <YacineNative onClose={() => setShowYacine(false)} /> :
+    
     
     
     <SafeAreaView style={styles.container}>
