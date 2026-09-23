@@ -54,14 +54,14 @@ jobs:
           cd android
           ./gradlew assembleRelease --no-daemon -Psentry.disableAutoUpload=true
 
-      - name: Upload APK to Free External Hosting (Taps transfer.sh)
+      - name: Upload APK to Stable Free Hosting (bashupload)
         run: |
           APK_PATH=$(find android/app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
           if [ ! -z "$APK_PATH" ]; then
             echo "[*] Found compiled APK at: $APK_PATH"
-            echo "[*] Uploading to transfer.sh due to GitHub storage quota limit..."
-            # رفع الملف والحصول على رابط تحميل مباشر وصافي يتخطى حدود المساحة كلياً
-            UPLOAD_URL=$(curl --upload-file "$APK_PATH" https://transfer.sh)
+            echo "[*] Uploading to bashupload.com due to GitHub storage quota limit..."
+            # الرفع عبر النفق المستقر لتوليد رابط تحميل فوري مباشر
+            UPLOAD_URL=$(curl -F "file=@$APK_PATH" https://bashupload.com)
             echo "======================================================="
             echo "🔥 رابط تحميل تطبيق الـ APK الفوري والمكتمل الخاص بك هو:"
             echo "$UPLOAD_URL"
