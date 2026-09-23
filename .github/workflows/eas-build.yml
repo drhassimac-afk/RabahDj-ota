@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -30,12 +30,12 @@ jobs:
         run: |
           EAS_SKIP_AUTO_FINGERPRINT=1 npx expo prebuild --platform android --clean
 
-      - name: Generate and Move Debug Keystore File
+      - name: Inject Sentry Disable into Gradle
         run: |
-          # توليد شهادة التوقيع التلقائية المطلوبة للبناء مباشرة داخل مجلد أندرويد
-          keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          # حقن كود التعطيل مباشرة بعد إنشاء المجلد وقبل التجميع لضمان عدم حذفه
+          sed -i '/apply from: "..\/node_modules\/@sentry\/react-native\/sentry.gradle"/i project.ext.sentry = [ disableAutoUpload: true ]' android/app/build.gradle
 
-      - name: Add debug signing configuration to gradle file
+      - name: Add debug signing configuration
         run: |
           sed -i '/signingConfigs {/a\
               release {\
@@ -48,10 +48,12 @@ jobs:
                   signingConfig signingConfigs.release
           }' android/app/build.gradle
 
-      - name: Build Release APK Bundle via Gradlew
+      - name: Build Release APK Bundle (Strict Sentry Override)
+        env:
+          SENTRY_DISABLE_AUTO_UPLOAD: 'true'
         run: |
           cd android
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon -Psentry.disableAutoUpload=true
 
       - name: Upload Clean Compiled APK
         uses: actions/upload-artifact@v4
