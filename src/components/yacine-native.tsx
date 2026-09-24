@@ -27,7 +27,7 @@ const officialLiveChannels: Channel[] = [
 ];
 
 function channelEmbedUrl(channelId: string): string {
-  return `https://youtube.com{channelId}&autoplay=1&playsinline=1`;
+  return `https://www.youtube.com/embed/live_stream?channel=${channelId}&autoplay=1&playsinline=1`;
 }
 
 export default function YacineNative({ onClose }: YacineNativeProps) {
@@ -48,12 +48,16 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     setCurrentChannel(channel);
   };
 
+  const handleClosePlayer = () => {
+    onClose();
+  };
+
   return (
-    <Modal animationType="slide" transparent={false} visible={true} onRequestClose={onClose}>
+    <Modal animationType="slide" transparent={false} visible={true} onRequestClose={handleClosePlayer}>
       <View style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>📺 قنوات المباشرة Rabah</Text>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+          <TouchableOpacity onPress={handleClosePlayer} style={styles.closeBtn}>
             <Text style={styles.closeText}>رجوع ←</Text>
           </TouchableOpacity>
         </View>
