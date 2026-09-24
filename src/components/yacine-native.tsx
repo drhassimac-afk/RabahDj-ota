@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, FlatList, TouchableOpacity, ActivityIndicator, Modal, Platform } from 'react-native';
+import { StyleSheet, Text, View, FlatList, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as ScreenOrientation from 'expo-screen-orientation';
 
@@ -54,80 +54,60 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   const [currentChannel, setCurrentChannel] = useState<Channel>(officialLiveChannels[0]);
   const [loadingVideo, setLoadingVideo] = useState<boolean>(true);
 
-  useEffect(() => {
-    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
-    return () => {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
-    };
-  }, []);
-
-  const handleSelectChannel = (channel: Channel) => {
-    if (channel.channelId === currentChannel.channelId) return;
-    setLoadingVideo(true);
-    setCurrentChannel(channel);
-  };
-
-  const handleClosePlayer = () => {
-    onClose();
-  };
-
-  return (
-    <Modal animationType="slide" transparent={false} visible={true} onRequestClose={handleClosePlayer}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>📺 قنوات المباشرة Rabah</Text>
-          <TouchableOpacity onPress={handleClosePlayer} style={styles.closeBtn}>
-            <Text style={styles.closeText}>رجوع ←</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* مشغل الفيديو عبر WebView + iframe (نفس تقنية html-host.tsx) */}
-        <View style={styles.videoContainer}>
-          <WebView
-            key={currentChannel.channelId}
-            source={{ html: buildEmbedHtml(currentChannel.channelId), baseUrl: 'https://www.youtube.com' }}
-            style={styles.video}
-            javaScriptEnabled
-            domStorageEnabled
-            allowsInlineMediaPlayback
-            allowsFullscreenVideo
-            mediaPlaybackRequiresUserAction={false}
-            mixedContentMode="always"
-            originWhitelist={['*']}
-            onLoadEnd={() => setLoadingVideo(false)}
-            onError={(e) => console.log('yacine webview error', e.nativeEvent)}
-            onHttpError={(e) => console.log('yacine webview http error', e.nativeEvent)}
-          />
-          {loadingVideo && (
-            <View style={styles.loadingOverlay}>
-              <ActivityIndicator size="large" color="#ff1e27" />
-            </View>
-          )}
-        </View>
-
-        {/* قائمة القنوات */}
-        <FlatList
-          data={channels}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContainer}
-          renderItem={({ item }) => {
-            const isSelected = currentChannel.channelId === item.channelId;
-            return (
-              <TouchableOpacity
-                style={[styles.item, isSelected && styles.activeItem]}
-                onPress={() => handleSelectChannel(item)}
-              >
-                <View style={styles.channelInfo}>
-                  <Text style={styles.categoryBadge}>{item.category}</Text>
-                  <Text style={styles.name}>{item.name}</Text>
-                </View>
-                <Text style={[styles.playIcon, isSelected && styles.activePlayIcon]}>▶</Text>
-              </TouchableOpacity>
-            );
-          }}
-        />
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>📺 قنوات المباشرة Rabah</Text>
+        <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+          <Text style={styles.closeText}>رجوع ←</Text>
+        </TouchableOpacity>
       </View>
-    </Modal>
+
+      {/* مشغل الفيديو عبر WebView + iframe (نفس تقنية html-host.tsx)، بلا Modal */}
+      <View style={styles.videoContainer}>
+        <WebView
+          key={currentChannel.channelId}
+          source={{ html: buildEmbedHtml(currentChannel.channelId), baseUrl: 'https://www.youtube.com' }}
+          style={styles.video}
+          javaScriptEnabled
+          domStorageEnabled
+          allowsInlineMediaPlayback
+          allowsFullscreenVideo
+          mediaPlaybackRequiresUserAction={false}
+          mixedContentMode="always"
+          originWhitelist={['*']}
+          onLoadEnd={() => setLoadingVideo(false)}
+          onError={(e) => console.log('yacine webview error', e.nativeEvent)}
+          onHttpError={(e) => console.log('yacine webview http error', e.nativeEvent)}
+        />
+        {loadingVideo && (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color="#ff1e27" />
+          </View>
+        )}
+      </View>
+
+      {/* قائمة القنوات */}
+      <FlatList
+        data={channels}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContainer}
+        renderItem={({ item }) => {
+          const isSelected = currentChannel.channelId === item.channelId;
+          return (
+            <TouchableOpacity
+              style={[styles.item, isSelected && styles.activeItem]}
+              onPress={() => handleSelectChannel(item)}
+            >
+              <View style={styles.channelInfo}>
+                <Text style={styles.categoryBadge}>{item.category}</Text>
+                <Text style={styles.name}>{item.name}</Text>
+              </View>
+              <Text style={[styles.playIcon, isSelected && styles.activePlayIcon]}>▶</Text>
+            </TouchableOpacity>
+          );
+        }}
+      />
+    </View>
   );
 }
 
