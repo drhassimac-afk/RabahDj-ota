@@ -14,6 +14,7 @@ interface YacineNativeProps {
   onClose: () => void;
 }
 
+// نفس القنوات الرسمية المجانية المتحقق منها فعلياً في cinema-native.tsx (Channel ID حقيقي لكل واحدة)
 const officialLiveChannels: Channel[] = [
   { id: '1', name: '📡 الجزيرة مباشر', channelId: 'UCCv1Pd24oPErw5S7zJWltnQ', category: 'أخبار' },
   { id: '2', name: '🇫🇷 فرانس 24 عربية', channelId: 'UCdTyuXgmJkG_O8_75eqej-w', category: 'أخبار' },
@@ -26,8 +27,26 @@ const officialLiveChannels: Channel[] = [
   { id: '9', name: '⚽ بين سبورت نيوز', channelId: 'UCJUCcJUeh0Cz2xyKwkw5Q1w', category: 'رياضة' },
 ];
 
-function channelEmbedUrl(channelId: string): string {
-  return `https://www.youtube.com/embed/live_stream?channel=${channelId}&autoplay=1&playsinline=1`;
+// صفحة HTML صغيرة تحتوي iframe يوتيوب (نفس تقنية html-host.tsx التي تعمل بالفعل)
+function buildEmbedHtml(channelId: string): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <style>
+    * { margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+    iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+  </style>
+</head>
+<body>
+  <iframe
+    src="https://www.youtube.com/embed/live_stream?channel=${channelId}&autoplay=1&playsinline=1&modestbranding=1&rel=0"
+    allow="autoplay; encrypted-media; picture-in-picture"
+    allowfullscreen
+  ></iframe>
+</body>
+</html>`;
 }
 
 export default function YacineNative({ onClose }: YacineNativeProps) {
@@ -62,17 +81,22 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
           </TouchableOpacity>
         </View>
 
+        {/* مشغل الفيديو عبر WebView + iframe (نفس تقنية html-host.tsx) */}
         <View style={styles.videoContainer}>
           <WebView
             key={currentChannel.channelId}
-            source={{ uri: channelEmbedUrl(currentChannel.channelId) }}
+            source={{ html: buildEmbedHtml(currentChannel.channelId), baseUrl: 'https://www.youtube.com' }}
             style={styles.video}
-            allowsFullscreenVideo
-            allowsInlineMediaPlayback
-            mediaPlaybackRequiresUserAction={false}
             javaScriptEnabled
             domStorageEnabled
+            allowsInlineMediaPlayback
+            allowsFullscreenVideo
+            mediaPlaybackRequiresUserAction={false}
+            mixedContentMode="always"
+            originWhitelist={['*']}
             onLoadEnd={() => setLoadingVideo(false)}
+            onError={(e) => console.log('yacine webview error', e.nativeEvent)}
+            onHttpError={(e) => console.log('yacine webview http error', e.nativeEvent)}
           />
           {loadingVideo && (
             <View style={styles.loadingOverlay}>
@@ -81,6 +105,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
           )}
         </View>
 
+        {/* قائمة القنوات */}
         <FlatList
           data={channels}
           keyExtractor={(item) => item.id}
