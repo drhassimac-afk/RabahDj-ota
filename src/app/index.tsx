@@ -1,6 +1,5 @@
 import * as Sharing from 'expo-sharing';
-// import * as Notifications from 'expo-notifications';
-const Notifications = { setNotificationHandler: () => {}, setNotificationChannelAsync: async () => {}, getPermissionsAsync: async () => ({ status: 'granted' }), requestPermissionsAsync: async () => {}, scheduleNotificationAsync: async () => {} };
+import * as Notifications from 'expo-notifications';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
