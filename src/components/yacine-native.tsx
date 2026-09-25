@@ -93,7 +93,12 @@ function PlayerView({
         </Text>
       </View>
 
-      <View style={styles.videoContainer}>
+      <View
+        style={[
+          styles.videoContainer,
+          fullscreen && styles.videoContainerFullscreen,
+        ]}
+      >
         <VideoView
           player={player}
           style={styles.video}
@@ -687,6 +692,16 @@ const styles = StyleSheet.create({
     height: 240,
     position: 'relative',
     backgroundColor: '#000',
+  },
+
+  videoContainerFullscreen: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: undefined,
+    zIndex: 10,
   },
 
   fullscreenButton: {
