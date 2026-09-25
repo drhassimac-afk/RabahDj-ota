@@ -56,7 +56,15 @@
       "expo-status-bar",
       "expo-web-browser",
       "expo-asset",
-      "expo-video"
+      "expo-video",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
