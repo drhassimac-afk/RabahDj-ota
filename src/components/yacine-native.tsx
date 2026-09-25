@@ -83,15 +83,17 @@ function PlayerView({
 
   return (
     <View style={styles.playerContainer}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onBack} style={styles.backButton}>
-          <Text style={styles.backText}>رجوع</Text>
-        </TouchableOpacity>
+      {!fullscreen && (
+        <View style={styles.header}>
+          <TouchableOpacity onPress={onBack} style={styles.backButton}>
+            <Text style={styles.backText}>رجوع</Text>
+          </TouchableOpacity>
 
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {channelName}
-        </Text>
-      </View>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {channelName}
+          </Text>
+        </View>
+      )}
 
       <View
         style={[
@@ -688,8 +690,8 @@ const styles = StyleSheet.create({
   },
 
   videoContainer: {
+    flex: 1,
     width: '100%',
-    height: 240,
     position: 'relative',
     backgroundColor: '#000',
   },
@@ -700,7 +702,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: undefined,
     zIndex: 10,
   },
 
