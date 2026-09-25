@@ -139,8 +139,9 @@ function PlayerView({
   // نصف الشاشة الأيسر: إضاءة — نصف الشاشة الأيمن: صوت
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => fullscreenRef.current,
-      onMoveShouldSetPanResponderCapture: () => fullscreenRef.current,
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) =>
+        fullscreenRef.current && Math.abs(gestureState.dy) > 8,
       onPanResponderGrant: (evt) => {
         brightnessStart.current = currentBrightness.current;
         volumeStart.current = currentVolume.current;
@@ -194,7 +195,6 @@ function PlayerView({
           styles.videoContainer,
           fullscreen && styles.videoContainerFullscreen,
         ]}
-        {...panResponder.panHandlers}
       >
         <VideoView
           player={player}
@@ -202,6 +202,14 @@ function PlayerView({
           contentFit="contain"
           nativeControls
         />
+
+        {fullscreen && (
+          <View
+            style={styles.gestureLayer}
+            {...panResponder.panHandlers}
+            pointerEvents="box-only"
+          />
+        )}
 
         {indicator && (
           <View
@@ -777,10 +785,16 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
 
+  gestureLayer: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 20,
+  },
+
   fullscreenButton: {
     position: 'absolute',
     right: 12,
     bottom: 12,
+    zIndex: 30,
     backgroundColor: 'rgba(0,0,0,0.75)',
     paddingHorizontal: 14,
     paddingVertical: 9,
@@ -791,6 +805,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     top: 12,
+    zIndex: 30,
     backgroundColor: 'rgba(0,0,0,0.75)',
     paddingHorizontal: 14,
     paddingVertical: 9,
