@@ -68,6 +68,7 @@ function PlayerView({
   onClose: () => void;
 }) {
   const [fullscreen, setFullscreen] = useState(false);
+  const fullscreenRef = useRef(false);
   const [indicator, setIndicator] = useState<{
     type: 'brightness' | 'volume';
     value: number;
@@ -110,16 +111,20 @@ function PlayerView({
 
   const toggleFullscreen = async () => {
     try {
-      if (fullscreen) {
-        await ScreenOrientation.lockAsync(
-          ScreenOrientation.OrientationLock.PORTRAIT
-        );
-      } else {
+      const nextFullscreen = !fullscreenRef.current;
+
+      if (nextFullscreen) {
         await ScreenOrientation.lockAsync(
           ScreenOrientation.OrientationLock.LANDSCAPE
         );
+      } else {
+        await ScreenOrientation.lockAsync(
+          ScreenOrientation.OrientationLock.PORTRAIT
+        );
       }
-      setFullscreen(!fullscreen);
+
+      fullscreenRef.current = nextFullscreen;
+      setFullscreen(nextFullscreen);
     } catch (error) {
       console.warn('Fullscreen error:', error);
     }
@@ -134,8 +139,8 @@ function PlayerView({
   // نصف الشاشة الأيسر: إضاءة — نصف الشاشة الأيمن: صوت
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => fullscreen,
-      onMoveShouldSetPanResponderCapture: () => fullscreen,
+      onStartShouldSetPanResponder: () => fullscreenRef.current,
+      onMoveShouldSetPanResponderCapture: () => fullscreenRef.current,
       onPanResponderGrant: (evt) => {
         brightnessStart.current = currentBrightness.current;
         volumeStart.current = currentVolume.current;
