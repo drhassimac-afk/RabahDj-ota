@@ -3,7 +3,7 @@
     "name": "RabahDj-app-wrapper",
     "slug": "RabahDj-app-wrapper",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "rabahdjappwrapper",
     "userInterfaceStyle": "automatic",
