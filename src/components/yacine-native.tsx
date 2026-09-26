@@ -127,6 +127,11 @@ function PlayerView({
       setFullscreen(nextFullscreen);
     } catch (error) {
       console.warn('Fullscreen error:', error);
+
+      Alert.alert(
+        'خطأ ملء الشاشة',
+        String(error)
+      );
     }
   };
 
@@ -200,16 +205,9 @@ function PlayerView({
           player={player}
           style={styles.video}
           contentFit="contain"
-          nativeControls
+          nativeControls={false}
         />
 
-        {fullscreen && (
-          <View
-            style={styles.gestureLayer}
-            {...panResponder.panHandlers}
-            pointerEvents="box-only"
-          />
-        )}
 
         {indicator && (
           <View
@@ -281,7 +279,7 @@ function MiniPlayer({
           player={player}
           style={styles.miniPlayerVideo}
           contentFit="cover"
-          nativeControls={false}
+          nativeControls
         />
         <Text style={styles.miniPlayerLabel} numberOfLines={1}>
           {channelName}
@@ -785,8 +783,21 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
 
-  gestureLayer: {
-    ...StyleSheet.absoluteFill,
+  gestureLayerLeft: {
+    position: 'absolute',
+    left: 0,
+    width: '50%',
+    top: 60,
+    bottom: 0,
+    zIndex: 20,
+  },
+
+  gestureLayerRight: {
+    position: 'absolute',
+    right: 0,
+    width: '50%',
+    top: 0,
+    bottom: 60,
     zIndex: 20,
   },
 
