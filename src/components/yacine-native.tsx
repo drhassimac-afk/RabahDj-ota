@@ -205,6 +205,7 @@ function PlayerView({
           contentFit="contain"
           nativeControls={false}
           pointerEvents="none"
+          surfaceType="textureView"
         />
 
 
