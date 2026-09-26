@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { NavigationBar as NavBar } from 'expo-navigation-bar';
 import * as Brightness from 'expo-brightness';
 import { VolumeManager } from 'react-native-volume-manager';
 
@@ -118,10 +119,14 @@ function PlayerView({
 
     try {
       if (nextFullscreen) {
+        NavBar.setHidden(true);
+
         await ScreenOrientation.lockAsync(
           ScreenOrientation.OrientationLock.LANDSCAPE
         );
       } else {
+        NavBar.setHidden(false);
+
         await ScreenOrientation.lockAsync(
           ScreenOrientation.OrientationLock.PORTRAIT
         );
