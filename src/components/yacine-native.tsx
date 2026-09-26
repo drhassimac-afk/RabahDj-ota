@@ -110,9 +110,13 @@ function PlayerView({
   }, []);
 
   const toggleFullscreen = async () => {
-    try {
-      const nextFullscreen = !fullscreenRef.current;
+    const nextFullscreen = !fullscreenRef.current;
 
+    // نبدل الواجهة بصريًا أولاً، بغض النظر عن نجاح قفل الاتجاه
+    fullscreenRef.current = nextFullscreen;
+    setFullscreen(nextFullscreen);
+
+    try {
       if (nextFullscreen) {
         await ScreenOrientation.lockAsync(
           ScreenOrientation.OrientationLock.LANDSCAPE
@@ -122,16 +126,9 @@ function PlayerView({
           ScreenOrientation.OrientationLock.PORTRAIT
         );
       }
-
-      fullscreenRef.current = nextFullscreen;
-      setFullscreen(nextFullscreen);
     } catch (error) {
-      console.warn('Fullscreen error:', error);
-
-      Alert.alert(
-        'خطأ ملء الشاشة',
-        String(error)
-      );
+      console.warn('Fullscreen orientation error:', error);
+      // لا نظهر Alert ولا نتراجع عن الواجهة، فقط الاتجاه قد لا يتغير
     }
   };
 
@@ -200,12 +197,14 @@ function PlayerView({
           styles.videoContainer,
           fullscreen && styles.videoContainerFullscreen,
         ]}
+        {...panResponder.panHandlers}
       >
         <VideoView
           player={player}
           style={styles.video}
           contentFit="contain"
           nativeControls={false}
+          pointerEvents="none"
         />
 
 
@@ -806,6 +805,7 @@ const styles = StyleSheet.create({
     right: 12,
     bottom: 12,
     zIndex: 30,
+    elevation: 30,
     backgroundColor: 'rgba(0,0,0,0.75)',
     paddingHorizontal: 14,
     paddingVertical: 9,
@@ -817,6 +817,7 @@ const styles = StyleSheet.create({
     left: 12,
     top: 12,
     zIndex: 30,
+    elevation: 30,
     backgroundColor: 'rgba(0,0,0,0.75)',
     paddingHorizontal: 14,
     paddingVertical: 9,

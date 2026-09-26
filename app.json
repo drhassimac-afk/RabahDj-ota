@@ -32,7 +32,8 @@
         "ACCESS_FINE_LOCATION",
         "WAKE_LOCK",
         "VIBRATE",
-        "RECEIVE_BOOT_COMPLETED"
+        "RECEIVE_BOOT_COMPLETED",
+        "WRITE_SETTINGS"
       ],
       "package": "com.rabahdj.app"
     },
@@ -57,6 +58,7 @@
       "expo-web-browser",
       "expo-asset",
       "expo-video",
+      "expo-brightness",
       [
         "expo-build-properties",
         {
@@ -73,9 +75,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "323e322e-22cd-487d-94af-898d1ccabec3"
+        "projectId": "7eefd5cb-ccc0-4892-8e4a-bdb72a65906c"
       }
     },
-    "owner": "badidas-team"
+    "owner": "rabahtec"
   }
 }
