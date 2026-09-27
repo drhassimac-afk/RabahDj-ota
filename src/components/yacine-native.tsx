@@ -801,7 +801,7 @@ const styles = StyleSheet.create({
   fullscreenButton: {
     position: 'absolute',
     right: 12,
-    bottom: 12,
+    bottom: 32,
     zIndex: 30,
     elevation: 30,
     backgroundColor: 'rgba(0,0,0,0.75)',
