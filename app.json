@@ -20,6 +20,7 @@
         "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "usesCleartextTraffic": true,
+      "usesCleartextTraffic": true,
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",
