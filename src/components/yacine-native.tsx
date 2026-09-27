@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ActivityIndicator,
   Alert,
@@ -53,6 +54,8 @@ type Channel = {
 };
 
 type Screen = 'login' | 'categories' | 'channels';
+
+const FAVORITES_STORAGE_KEY = 'rabah_iptv_favorites';
 
 // ============================================================
 // مشغّل الفيديو (ملء شاشة + تحكم بالسحب بالصوت/الإضاءة + play/pause + تالي/سابق)
@@ -394,6 +397,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [favorites, setFavorites] = useState<Channel[]>([]);
 
   const [activeChannel, setActiveChannel] = useState<{
     url: string;
@@ -410,6 +414,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     ).catch(() => {});
 
     loadSavedCredentials();
+    loadFavorites();
 
     return () => {
       ScreenOrientation.lockAsync(
@@ -417,6 +422,39 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
       ).catch(() => {});
     };
   }, []);
+
+  async function loadFavorites() {
+    try {
+      const raw = await AsyncStorage.getItem(FAVORITES_STORAGE_KEY);
+      if (raw) {
+        setFavorites(JSON.parse(raw));
+      }
+    } catch {
+      // تجاهل
+    }
+  }
+
+  async function toggleFavorite(channel: Channel) {
+    setFavorites((prev) => {
+      const exists = prev.some((c) => c.stream_id === channel.stream_id);
+      const next = exists
+        ? prev.filter((c) => c.stream_id !== channel.stream_id)
+        : [...prev, channel];
+      AsyncStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }
+
+  function isFavorite(channel: Channel) {
+    return favorites.some((c) => c.stream_id === channel.stream_id);
+  }
+
+  function openFavorites() {
+    setChannels(favorites);
+    setSelectedCategory('⭐ المفضلة');
+    setSearchQuery('');
+    setScreen('channels');
+  }
 
   async function loadSavedCredentials() {
     try {
@@ -674,6 +712,12 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
             <View style={styles.flex}>
               {renderHeader('📂 فئات القنوات')}
 
+              <TouchableOpacity style={styles.favoritesRow} onPress={openFavorites}>
+                <Text style={styles.itemIcon}>⭐</Text>
+                <Text style={styles.itemText}>المفضلة ({favorites.length})</Text>
+                <Text style={styles.arrow}>‹</Text>
+              </TouchableOpacity>
+
               {loading ? (
                 <View style={styles.center}>
                   <ActivityIndicator size="large" color="#ff1e27" />
@@ -738,16 +782,27 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
                     </Text>
                   }
                   renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={styles.listItem}
-                      onPress={() => openChannel(item)}
-                    >
-                      <Text style={styles.itemIcon}>📺</Text>
-                      <Text style={styles.itemText} numberOfLines={2}>
-                        {item.name || 'قناة بدون اسم'}
-                      </Text>
-                      <Text style={styles.playIcon}>▶</Text>
-                    </TouchableOpacity>
+                    <View style={styles.listItem}>
+                      <TouchableOpacity
+                        onPress={() => toggleFavorite(item)}
+                        style={styles.favoriteStarButton}
+                      >
+                        <Text style={styles.favoriteStarText}>
+                          {isFavorite(item) ? '⭐' : '☆'}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.listItemContent}
+                        onPress={() => openChannel(item)}
+                      >
+                        <Text style={styles.itemIcon}>📺</Text>
+                        <Text style={styles.itemText} numberOfLines={2}>
+                          {item.name || 'قناة بدون اسم'}
+                        </Text>
+                        <Text style={styles.playIcon}>▶</Text>
+                      </TouchableOpacity>
+                    </View>
                   )}
                 />
               )}
@@ -892,6 +947,19 @@ const styles = StyleSheet.create({
   searchClear: { color: '#9aa8bd', fontSize: 16, paddingHorizontal: 4 },
 
   list: { padding: 12 },
+  favoritesRow: {
+    minHeight: 56,
+    backgroundColor: '#26344d',
+    borderWidth: 1,
+    borderColor: '#3a4a68',
+    borderRadius: 12,
+    marginHorizontal: 12,
+    marginTop: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
   listItem: {
     minHeight: 64,
     backgroundColor: '#161f30',
@@ -899,10 +967,26 @@ const styles = StyleSheet.create({
     borderColor: '#273247',
     borderRadius: 12,
     marginBottom: 10,
-    paddingHorizontal: 14,
+    paddingHorizontal: 8,
     flexDirection: 'row',
     alignItems: 'center',
   },
+
+  listItemContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+  },
+
+  favoriteStarButton: {
+    width: 40,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  favoriteStarText: { fontSize: 20 },
 
   itemIcon: { fontSize: 24, width: 40, textAlign: 'center' },
 
