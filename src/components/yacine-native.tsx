@@ -13,18 +13,14 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('login');
   const [currentUrl, setCurrentUrl] = useState<string>('');
   
-  // متغيرات إدخال البيانات يدوياً (مع وضع قيم اشتراكك الحالية كقيم افتراضية جاهزة)
   const [host, setHost] = useState<string>('https://iptv.domains');
   const [username, setUsername] = useState<string>('VN637HFH');
   const [password, setPassword] = useState<string>('L484RBCR');
 
   useEffect(() => {
-    // إدارة اتجاه الشاشة برمجياً لحل مشكلة التصغير واللمس كلياً
     if (viewMode === 'player') {
-      // فتح الشاشة بالعرض قسرياً عند تشغيل الفيديو لتسهيل الإضاءة والصوت ومقاييس الأزرار
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
     } else {
-      // إرجاع الشاشة للوضع الطولي المستقر أثناء تصفح لوحة التحكم والإدخال
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
     }
     return () => {
@@ -37,11 +33,11 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     const cleanUser = username.trim();
     const cleanPass = password.trim();
     
-    // بناء رابط الـ M3U المباشر والمعتمد برمجياً للسيرفر
+    // بناء رابط الـ M3U المباشر والمعتمد برمجياً للسيرفر الخاص بك
     const m3uUrl = `${cleanHost}/get.php?username=${cleanUser}&password=${cleanPass}&type=m3u_plus`;
     
-    // ربط الرابط بنفق مشغل الويب المتطور لفرز القنوات داخل الـ WebView
-    return `https://nxtv.top{encodeURIComponent(m3uUrl)}&action=${action}`;
+    // استخدام المشغل العالمي المفتوح والمستقر والمقاوم للحظر لقراءة قنواتك مباشرة
+    return `https://github.io{encodeURIComponent(m3uUrl)}&type=${action}`;
   };
 
   const handleOpenCategory = (action: 'live' | 'movies' | 'series') => {
@@ -58,7 +54,6 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     <Modal animationType="slide" transparent={false} visible={true} onRequestClose={onClose}>
       <View style={styles.container}>
         
-        {/* شريط علوي مرن يتأقلم بحسب حالة العرض الحالية */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>
             {viewMode === 'login' ? '🔐 إدخال اشتراك IPTV يدوياً' : viewMode === 'dashboard' ? '🔥 RABAH IPTV SMARTERS' : '📺 مشغل الفيديو الذكي'}
@@ -73,7 +68,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
           </TouchableOpacity>
         </View>
 
-        {/* الواجهة الأولى: إدخال الكود يدوياً (Login Setup Card) */}
+        {/* 1. واجهة الإدخال اليدوي للكود */}
         {viewMode === 'login' && (
           <ScrollView contentContainerStyle={styles.scrollContainer}>
             <View style={styles.card}>
@@ -105,7 +100,6 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
                 placeholder="Password" 
                 placeholderTextColor="#5b6785"
                 autoCapitalize="none"
-                secureTextEntry={false}
               />
 
               <TouchableOpacity style={styles.submitBtn} onPress={() => setViewMode('dashboard')}>
@@ -115,7 +109,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
           </ScrollView>
         )}
 
-        {/* الواجهة الثانية: لوحة الأقسام الثلاثة الرئيسية المطابقة لـ Smarters Pro */}
+        {/* 2. واجهة الأقسام الثلاثة الرئيسية */}
         {viewMode === 'dashboard' && (
           <View style={styles.dashboardContainer}>
             <View style={styles.accountBox}>
@@ -140,7 +134,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
           </View>
         )}
 
-        {/* الواجهة الثالثة: مشغل العرض الكامل والمستجيب للمس والصوت والإضاءة */}
+        {/* 3. المشغل العالمي المستقر والمستجيب كلياً للمس والصوت */}
         {viewMode === 'player' && (
           <WebView
             style={styles.webview}
@@ -150,9 +144,9 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
             allowsFullscreenVideo={true}
             mediaPlaybackRequiresUserAction={false}
             allowsInlineMediaPlayback={true}
-            scalesPageToFit={true} // حل مشكلة التصغير والتكبير نهائياً
-            builtInZoomControls={true} // تفعيل مستشعرات اللمس للإيماءات (Gestures)
-            displayZoomControls={false} // إخفاء أزرار التحكم بالعدسة لتسهيل لمس الشاشة ورفع الصوت
+            scalesPageToFit={true}
+            builtInZoomControls={true}
+            displayZoomControls={false}
             userAgent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36"
           />
         )}
