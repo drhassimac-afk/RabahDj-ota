@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
   ActivityIndicator,
   Alert,
@@ -6,7 +7,6 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Modal,
-  PanResponder,
   Platform,
   StatusBar,
   StyleSheet,
@@ -174,37 +174,34 @@ function PlayerView({
   };
 
   // نصف الشاشة الأيسر: إضاءة — نصف الشاشة الأيمن: صوت
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => fullscreenRef.current,
-      onStartShouldSetPanResponderCapture: () => false,
-      onMoveShouldSetPanResponder: (_, gestureState) =>
-        fullscreenRef.current && Math.abs(gestureState.dy) > 8,
-      onPanResponderGrant: () => {
-        brightnessStart.current = currentBrightness.current;
-        volumeStart.current = currentVolume.current;
-      },
-      onPanResponderMove: (evt, gestureState) => {
-        const { width, height } = Dimensions.get('window');
-        const touchX = evt.nativeEvent.locationX;
-        const delta = -gestureState.dy / height;
+  const touchStartX = useRef(0);
 
-        if (touchX < width / 2) {
-          let next = brightnessStart.current + delta;
-          next = Math.max(0, Math.min(1, next));
-          currentBrightness.current = next;
-          Brightness.setBrightnessAsync(next).catch(() => {});
-          showIndicator('brightness', next);
-        } else {
-          let next = volumeStart.current + delta;
-          next = Math.max(0, Math.min(1, next));
-          currentVolume.current = next;
-          VolumeManager.setVolume(next);
-          showIndicator('volume', next);
-        }
-      },
+  const panGesture = Gesture.Pan()
+    .onBegin((e) => {
+      touchStartX.current = e.x;
+      brightnessStart.current = currentBrightness.current;
+      volumeStart.current = currentVolume.current;
     })
-  ).current;
+    .onUpdate((e) => {
+      if (!fullscreenRef.current) return;
+      const { width, height } = Dimensions.get('window');
+      const delta = -e.translationY / height;
+
+      if (touchStartX.current < width / 2) {
+        let next = brightnessStart.current + delta;
+        next = Math.max(0, Math.min(1, next));
+        currentBrightness.current = next;
+        Brightness.setBrightnessAsync(next).catch(() => {});
+        showIndicator('brightness', next);
+      } else {
+        let next = volumeStart.current + delta;
+        next = Math.max(0, Math.min(1, next));
+        currentVolume.current = next;
+        VolumeManager.setVolume(next);
+        showIndicator('volume', next);
+      }
+    })
+    .minDistance(8);
 
   return (
     <View style={styles.playerContainer}>
@@ -241,12 +238,10 @@ function PlayerView({
           surfaceType="textureView"
         />
 
-        {/* طبقة السحب شفافة منفصلة فوق الفيديو — تلتقط اللمسة مباشرة */}
-        <View
-          style={StyleSheet.absoluteFill}
-          pointerEvents="box-only"
-          {...panResponder.panHandlers}
-        />
+        {/* طبقة السحب شفافة منفصلة فوق الفيديو — gesture-handler يلتقط اللمسة قبل أي native surface */}
+        <GestureDetector gesture={panGesture}>
+          <View style={StyleSheet.absoluteFill} />
+        </GestureDetector>
 
         {indicator && (
           <View
@@ -330,25 +325,52 @@ function MiniPlayer({
     p.play();
   });
 
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const dragStart = useRef({ x: 0, y: 0 });
+
+  const panGesture = Gesture.Pan()
+    .onBegin(() => {
+      dragStart.current = { x: pos.x, y: pos.y };
+    })
+    .onUpdate((e) => {
+      const { width, height } = Dimensions.get('window');
+      let nx = dragStart.current.x + e.translationX;
+      let ny = dragStart.current.y + e.translationY;
+      // حدود تقريبية باش يبقى الفيديو المصغّر داخل الشاشة
+      nx = Math.max(-width + 180, Math.min(width - 180, nx));
+      ny = Math.max(-height + 130, Math.min(height - 130, ny));
+      setPos({ x: nx, y: ny });
+    })
+    .minDistance(6);
+
+  const tapGesture = Gesture.Tap().onEnd(() => {
+    onExpand();
+  });
+
+  const composedGesture = Gesture.Exclusive(panGesture, tapGesture);
+
   return (
-    <View style={styles.miniPlayerWrapper}>
-      <TouchableOpacity
-        style={styles.miniPlayerTouchable}
-        activeOpacity={0.9}
-        onPress={onExpand}
-      >
-        <VideoView
-          player={player}
-          style={styles.miniPlayerVideo}
-          contentFit="cover"
-          nativeControls={false}
-          pointerEvents="none"
-          surfaceType="textureView"
-        />
-        <Text style={styles.miniPlayerLabel} numberOfLines={1}>
-          {channelName}
-        </Text>
-      </TouchableOpacity>
+    <View
+      style={[
+        styles.miniPlayerWrapper,
+        { transform: [{ translateX: pos.x }, { translateY: pos.y }] },
+      ]}
+    >
+      <GestureDetector gesture={composedGesture}>
+        <View style={styles.miniPlayerTouchable}>
+          <VideoView
+            player={player}
+            style={styles.miniPlayerVideo}
+            contentFit="cover"
+            nativeControls={false}
+            pointerEvents="none"
+            surfaceType="textureView"
+          />
+          <Text style={styles.miniPlayerLabel} numberOfLines={1}>
+            {channelName}
+          </Text>
+        </View>
+      </GestureDetector>
 
       <TouchableOpacity style={styles.miniPlayerClose} onPress={onClose}>
         <Text style={styles.miniPlayerCloseText}>✕</Text>
