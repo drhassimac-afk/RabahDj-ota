@@ -30,6 +30,11 @@ import {
   getLiveCategories,
   getLiveStreams,
   getStreamUrl,
+  getVodCategories,
+  getVodStreams,
+  getVodStreamUrl,
+  getShortEpg,
+  decodeBase64Text,
 } from '../../api/xtream';
 
 interface YacineNativeProps {
@@ -51,11 +56,52 @@ type Channel = {
   stream_id: string | number;
   name: string;
   stream_icon?: string;
+  container_extension?: string;
 };
 
-type Screen = 'login' | 'dashboard' | 'categories' | 'channels';
+type Screen = 'login' | 'dashboard' | 'categories' | 'channels' | 'movies-categories' | 'movies-list';
 
 const FAVORITES_STORAGE_KEY = 'rabah_iptv_favorites';
+const LAST_WATCHED_STORAGE_KEY = 'rabah_iptv_last_watched';
+
+// ============================================================
+// عرض اسم البرنامج الحالي لقناة معيّنة (EPG قصير)
+// ============================================================
+function ChannelEpgLabel({
+  channel,
+  credentials,
+}: {
+  channel: Channel;
+  credentials: Credentials;
+}) {
+  const [title, setTitle] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await getShortEpg(credentials, String(channel.stream_id), 1);
+        const listing = data?.epg_listings?.[0];
+        if (listing?.title && !cancelled) {
+          setTitle(decodeBase64Text(listing.title));
+        }
+      } catch {
+        // بعض السيرفرات ما عندهاش EPG — نتجاهل بصمت
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [channel.stream_id]);
+
+  if (!title) return null;
+
+  return (
+    <Text style={styles.epgText} numberOfLines={1}>
+      🔴 الآن: {title}
+    </Text>
+  );
+}
 
 // ============================================================
 // مشغّل الفيديو (ملء شاشة + تحكم بالسحب بالصوت/الإضاءة + play/pause + تالي/سابق)
@@ -398,11 +444,16 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   const [selectedCategory, setSelectedCategory] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState<Channel[]>([]);
+  const [lastWatched, setLastWatched] = useState<Channel | null>(null);
+  const [movieCategories, setMovieCategories] = useState<CategoryItem[]>([]);
+  const [movies, setMovies] = useState<Channel[]>([]);
+  const [selectedMovieCategory, setSelectedMovieCategory] = useState('');
 
   const [activeChannel, setActiveChannel] = useState<{
     url: string;
     name: string;
     index: number;
+    source: 'live' | 'movie';
   } | null>(null);
   const [playerMinimized, setPlayerMinimized] = useState(false);
 
@@ -415,6 +466,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
 
     loadSavedCredentials();
     loadFavorites();
+    loadLastWatched();
 
     return () => {
       ScreenOrientation.lockAsync(
@@ -454,6 +506,24 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     setSelectedCategory('⭐ المفضلة');
     setSearchQuery('');
     setScreen('channels');
+  }
+
+  async function loadLastWatched() {
+    try {
+      const raw = await AsyncStorage.getItem(LAST_WATCHED_STORAGE_KEY);
+      if (raw) {
+        setLastWatched(JSON.parse(raw));
+      }
+    } catch {
+      // تجاهل
+    }
+  }
+
+  function resumeLastWatched() {
+    if (!credentials || !lastWatched) return;
+    const url = getStreamUrl(credentials, String(lastWatched.stream_id), 'm3u8');
+    setActiveChannel({ url, name: lastWatched.name || 'قناة', index: -1, source: 'live' });
+    setPlayerMinimized(false);
   }
 
   async function loadSavedCredentials() {
@@ -542,7 +612,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     if (!channel) return;
 
     const url = getStreamUrl(credentials, String(channel.stream_id), 'm3u8');
-    setActiveChannel({ url, name: channel.name || 'قناة', index });
+    setActiveChannel({ url, name: channel.name || 'قناة', index, source: 'live' });
   }
 
   function openChannel(channel: Channel) {
@@ -550,13 +620,66 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
 
     const index = channels.findIndex((c) => c.stream_id === channel.stream_id);
     const url = getStreamUrl(credentials, String(channel.stream_id), 'm3u8');
-    setActiveChannel({ url, name: channel.name || 'قناة', index });
+    setActiveChannel({ url, name: channel.name || 'قناة', index, source: 'live' });
+    setPlayerMinimized(false);
+
+    setLastWatched(channel);
+    AsyncStorage.setItem(LAST_WATCHED_STORAGE_KEY, JSON.stringify(channel)).catch(() => {});
+  }
+
+  async function openMovieCategories() {
+    if (!credentials) return;
+    try {
+      setLoading(true);
+      const data = await getVodCategories(credentials);
+      setMovieCategories(Array.isArray(data) ? data : []);
+      setScreen('movies-categories');
+    } catch (error: any) {
+      Alert.alert('خطأ', error?.message || 'تعذر جلب فئات الأفلام');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function openMovieCategory(category: CategoryItem) {
+    if (!credentials) return;
+    try {
+      setLoading(true);
+      setSelectedMovieCategory(String(category.category_name));
+      const data = await getVodStreams(credentials, String(category.category_id));
+      setMovies(Array.isArray(data) ? data : []);
+      setScreen('movies-list');
+    } catch (error: any) {
+      Alert.alert('خطأ', error?.message || 'تعذر جلب الأفلام');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function playMovieAtIndex(index: number) {
+    if (!credentials) return;
+    const movie = movies[index];
+    if (!movie) return;
+
+    const url = getVodStreamUrl(credentials, movie.stream_id, movie.container_extension || 'mp4');
+    setActiveChannel({ url, name: movie.name || 'فيلم', index, source: 'movie' });
+  }
+
+  function openMovie(movie: Channel) {
+    if (!credentials) return;
+    const index = movies.findIndex((m) => m.stream_id === movie.stream_id);
+    const url = getVodStreamUrl(credentials, movie.stream_id, movie.container_extension || 'mp4');
+    setActiveChannel({ url, name: movie.name || 'فيلم', index, source: 'movie' });
     setPlayerMinimized(false);
   }
 
   function goToNextChannel() {
     if (!activeChannel) return;
-    if (activeChannel.index < channels.length - 1) {
+    if (activeChannel.source === 'movie') {
+      if (activeChannel.index < movies.length - 1) {
+        playMovieAtIndex(activeChannel.index + 1);
+      }
+    } else if (activeChannel.index < channels.length - 1) {
       playChannelAtIndex(activeChannel.index + 1);
     }
   }
@@ -564,7 +687,11 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   function goToPreviousChannel() {
     if (!activeChannel) return;
     if (activeChannel.index > 0) {
-      playChannelAtIndex(activeChannel.index - 1);
+      if (activeChannel.source === 'movie') {
+        playMovieAtIndex(activeChannel.index - 1);
+      } else {
+        playChannelAtIndex(activeChannel.index - 1);
+      }
     }
   }
 
@@ -588,7 +715,11 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
       setScreen('categories');
       return;
     }
-    if (screen === 'categories') {
+    if (screen === 'movies-list') {
+      setScreen('movies-categories');
+      return;
+    }
+    if (screen === 'categories' || screen === 'movies-categories') {
       setScreen('dashboard');
       return;
     }
@@ -646,7 +777,11 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
             channelName={activeChannel!.name}
             onMinimize={() => setPlayerMinimized(true)}
             onClose={closePlayer}
-            hasNext={activeChannel!.index < channels.length - 1}
+            hasNext={
+              activeChannel!.source === 'movie'
+                ? activeChannel!.index < movies.length - 1
+                : activeChannel!.index < channels.length - 1
+            }
             hasPrevious={activeChannel!.index > 0}
             onNext={goToNextChannel}
             onPrevious={goToPreviousChannel}
@@ -718,6 +853,18 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
               </View>
 
               <View style={styles.dashboardGrid}>
+                {lastWatched && (
+                  <TouchableOpacity style={styles.resumeCard} onPress={resumeLastWatched}>
+                    <Text style={styles.resumeIcon}>▶</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.resumeLabel}>متابعة المشاهدة</Text>
+                      <Text style={styles.resumeChannelName} numberOfLines={1}>
+                        {lastWatched.name}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+
                 <TouchableOpacity
                   style={[styles.dashboardCardLarge, { backgroundColor: '#1f8a5c' }]}
                   onPress={() => setScreen('categories')}
@@ -729,7 +876,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
                 <View style={styles.dashboardRow}>
                   <TouchableOpacity
                     style={[styles.dashboardCardSmall, { backgroundColor: '#c0392b' }]}
-                    onPress={() => Alert.alert('قريبًا 🔜', 'قسم الأفلام قيد التطوير')}
+                    onPress={openMovieCategories}
                   >
                     <Text style={styles.dashboardCardIcon}>🎬</Text>
                     <Text style={styles.dashboardCardTitle}>أفلام</Text>
@@ -811,6 +958,72 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
             </View>
           )}
 
+          {screen === 'movies-categories' && (
+            <View style={styles.flex}>
+              {renderHeader('🎬 فئات الأفلام')}
+
+              {loading ? (
+                <View style={styles.center}>
+                  <ActivityIndicator size="large" color="#ff1e27" />
+                  <Text style={styles.loadingText}>جارٍ تحميل الفئات...</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={movieCategories}
+                  keyExtractor={(item, index) => String(item.category_id ?? index)}
+                  contentContainerStyle={styles.list}
+                  ListEmptyComponent={
+                    <Text style={styles.emptyText}>لا توجد فئات أفلام</Text>
+                  }
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.listItem}
+                      onPress={() => openMovieCategory(item)}
+                    >
+                      <Text style={styles.itemIcon}>📂</Text>
+                      <Text style={styles.itemText}>{item.category_name}</Text>
+                      <Text style={styles.arrow}>‹</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              )}
+            </View>
+          )}
+
+          {screen === 'movies-list' && (
+            <View style={styles.flex}>
+              {renderHeader(selectedMovieCategory || '🎬 أفلام')}
+
+              {loading ? (
+                <View style={styles.center}>
+                  <ActivityIndicator size="large" color="#ff1e27" />
+                  <Text style={styles.loadingText}>جارٍ تحميل الأفلام...</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={movies}
+                  keyExtractor={(item, index) => String(item.stream_id ?? index)}
+                  contentContainerStyle={styles.list}
+                  ListEmptyComponent={
+                    <Text style={styles.emptyText}>لا توجد أفلام فـ هذه الفئة</Text>
+                  }
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.listItem}
+                      onPress={() => openMovie(item)}
+                    >
+                      <Text style={styles.itemIcon}>🎬</Text>
+                      <Text style={styles.itemText} numberOfLines={2}>
+                        {item.name || 'فيلم بدون اسم'}
+                      </Text>
+                      <Text style={styles.playIcon}>▶</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              )}
+            </View>
+          )}
+
           {screen === 'channels' && (
             <View style={styles.flex}>
               {renderHeader(selectedCategory || ' 📺 القنوات')}
@@ -862,9 +1075,14 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
                         onPress={() => openChannel(item)}
                       >
                         <Text style={styles.itemIcon}>📺</Text>
-                        <Text style={styles.itemText} numberOfLines={2}>
-                          {item.name || 'قناة بدون اسم'}
-                        </Text>
+                        <View style={{ flex: 1, marginHorizontal: 10 }}>
+                          <Text style={styles.itemText} numberOfLines={1}>
+                            {item.name || 'قناة بدون اسم'}
+                          </Text>
+                          {credentials && (
+                            <ChannelEpgLabel channel={item} credentials={credentials} />
+                          )}
+                        </View>
                         <Text style={styles.playIcon}>▶</Text>
                       </TouchableOpacity>
                     </View>
@@ -1142,6 +1360,33 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 8,
   },
+
+  epgText: {
+    color: '#8fd3a8',
+    fontSize: 11,
+    marginTop: 2,
+  },
+
+  resumeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#26344d',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#3a4a68',
+  },
+
+  resumeIcon: {
+    fontSize: 22,
+    color: '#ff1e27',
+    marginEnd: 12,
+  },
+
+  resumeLabel: { color: '#9aa8bd', fontSize: 12 },
+
+  resumeChannelName: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
 
   playerContainer: { flex: 1, backgroundColor: '#000' },
 
