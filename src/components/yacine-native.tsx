@@ -53,7 +53,7 @@ type Channel = {
   stream_icon?: string;
 };
 
-type Screen = 'login' | 'categories' | 'channels';
+type Screen = 'login' | 'dashboard' | 'categories' | 'channels';
 
 const FAVORITES_STORAGE_KEY = 'rabah_iptv_favorites';
 
@@ -510,7 +510,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
       setLoading(true);
       const data = await getLiveCategories(creds);
       setCategories(Array.isArray(data) ? data : []);
-      setScreen('categories');
+      setScreen('dashboard');
     } catch (error: any) {
       Alert.alert('خطأ', error?.message || 'تعذر جلب الفئات');
     } finally {
@@ -589,7 +589,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
       return;
     }
     if (screen === 'categories') {
-      setScreen('login');
+      setScreen('dashboard');
       return;
     }
     onClose();
@@ -705,6 +705,71 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
                   )}
                 </TouchableOpacity>
               </View>
+            </View>
+          )}
+
+          {screen === 'dashboard' && (
+            <View style={styles.flex}>
+              <View style={styles.dashboardHeader}>
+                <Text style={styles.dashboardBrand}>📺 RABAH TV</Text>
+                <TouchableOpacity onPress={logout} style={styles.logoutButton}>
+                  <Text style={styles.logoutText}>خروج</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.dashboardGrid}>
+                <TouchableOpacity
+                  style={[styles.dashboardCardLarge, { backgroundColor: '#1f8a5c' }]}
+                  onPress={() => setScreen('categories')}
+                >
+                  <Text style={styles.dashboardCardIcon}>📡</Text>
+                  <Text style={styles.dashboardCardTitle}>TV مباشر</Text>
+                </TouchableOpacity>
+
+                <View style={styles.dashboardRow}>
+                  <TouchableOpacity
+                    style={[styles.dashboardCardSmall, { backgroundColor: '#c0392b' }]}
+                    onPress={() => Alert.alert('قريبًا 🔜', 'قسم الأفلام قيد التطوير')}
+                  >
+                    <Text style={styles.dashboardCardIcon}>🎬</Text>
+                    <Text style={styles.dashboardCardTitle}>أفلام</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.dashboardCardSmall, { backgroundColor: '#6c3fa8' }]}
+                    onPress={() => Alert.alert('قريبًا 🔜', 'قسم المسلسلات قيد التطوير')}
+                  >
+                    <Text style={styles.dashboardCardIcon}>🎞️</Text>
+                    <Text style={styles.dashboardCardTitle}>مسلسلات</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.dashboardCardTiny}
+                  onPress={() => Alert.alert('قريبًا 🔜', 'دليل البرامج (EPG) قيد التطوير')}
+                >
+                  <Text style={styles.dashboardCardTinyIcon}>📖</Text>
+                  <Text style={styles.dashboardCardTinyText}>مباشر مع EPG</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.dashboardCardTiny}
+                  onPress={() => Alert.alert('قريبًا 🔜', 'ميزة الشاشات المتعددة قيد التطوير')}
+                >
+                  <Text style={styles.dashboardCardTinyIcon}>▦</Text>
+                  <Text style={styles.dashboardCardTinyText}>شاشات متعددة</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.dashboardCardTiny}
+                  onPress={() => Alert.alert('قريبًا 🔜', 'ميزة الرتراباج قيد التطوير')}
+                >
+                  <Text style={styles.dashboardCardTinyIcon}>🕐</Text>
+                  <Text style={styles.dashboardCardTinyText}>رتراباج</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.dashboardFooter}>متصل: {username}</Text>
             </View>
           )}
 
@@ -1011,6 +1076,71 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 40,
     fontSize: 15,
+  },
+
+  dashboardHeader: {
+    minHeight: 64,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#161f30',
+    borderBottomWidth: 1,
+    borderBottomColor: '#273247',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  dashboardBrand: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+
+  dashboardGrid: { padding: 16 },
+
+  dashboardCardLarge: {
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+    minHeight: 140,
+  },
+
+  dashboardRow: {
+    flexDirection: 'row',
+    gap: 14,
+    marginBottom: 14,
+  },
+
+  dashboardCardSmall: {
+    flex: 1,
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 110,
+  },
+
+  dashboardCardTiny: {
+    backgroundColor: '#2c8a6d',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+
+  dashboardCardTinyIcon: { fontSize: 20, marginEnd: 10 },
+
+  dashboardCardTinyText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
+
+  dashboardCardIcon: { fontSize: 34, marginBottom: 8 },
+
+  dashboardCardTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+
+  dashboardFooter: {
+    color: '#9aa8bd',
+    textAlign: 'center',
+    fontSize: 12,
+    marginTop: 8,
   },
 
   playerContainer: { flex: 1, backgroundColor: '#000' },
