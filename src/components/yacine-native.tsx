@@ -88,6 +88,15 @@ function PlayerView({
   useEffect(() => {
     (async () => {
       try {
+        const { status } = await Brightness.requestPermissionsAsync();
+        if (status !== 'granted') {
+          console.warn('Brightness permission not granted');
+        }
+      } catch (error) {
+        console.warn('Brightness permission request failed:', error);
+      }
+
+      try {
         const b = await Brightness.getBrightnessAsync();
         currentBrightness.current = b;
       } catch {
