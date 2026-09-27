@@ -120,7 +120,6 @@ function PlayerView({
   }, []);
 
   const toggleFullscreen = async () => {
-    Alert.alert('تجربة', 'toggleFullscreen استُدعيت');
     const nextFullscreen = !fullscreenRef.current;
 
     fullscreenRef.current = nextFullscreen;
