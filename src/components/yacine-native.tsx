@@ -393,6 +393,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [activeChannel, setActiveChannel] = useState<{
     url: string;
@@ -488,6 +489,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
 
       const data = await getLiveStreams(credentials, String(category.category_id));
       setChannels(Array.isArray(data) ? data : []);
+      setSearchQuery('');
       setScreen('channels');
     } catch (error: any) {
       Alert.alert('خطأ', error?.message || 'تعذر جلب القنوات');
@@ -582,6 +584,12 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
       </View>
     );
   }
+
+  const filteredChannels = searchQuery.trim()
+    ? channels.filter((c) =>
+        (c.name || '').toLowerCase().includes(searchQuery.trim().toLowerCase())
+      )
+    : channels;
 
   const showExpandedPlayer = activeChannel && !playerMinimized;
   const showMiniPlayer = activeChannel && playerMinimized;
@@ -698,6 +706,22 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
             <View style={styles.flex}>
               {renderHeader(selectedCategory || ' 📺 القنوات')}
 
+              <View style={styles.searchBox}>
+                <Text style={styles.searchIcon}>🔍</Text>
+                <TextInput
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder="ابحث عن قناة..."
+                  placeholderTextColor="#7f8da3"
+                  style={styles.searchInput}
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery('')}>
+                    <Text style={styles.searchClear}>✕</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
               {loading ? (
                 <View style={styles.center}>
                   <ActivityIndicator size="large" color="#ff1e27" />
@@ -705,11 +729,13 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
                 </View>
               ) : (
                 <FlatList
-                  data={channels}
+                  data={filteredChannels}
                   keyExtractor={(item, index) => String(item.stream_id ?? index)}
                   contentContainerStyle={styles.list}
                   ListEmptyComponent={
-                    <Text style={styles.emptyText}>لا توجد قنوات في هذه الفئة</Text>
+                    <Text style={styles.emptyText}>
+                      {searchQuery ? 'لا توجد نتائج مطابقة' : 'لا توجد قنوات في هذه الفئة'}
+                    </Text>
                   }
                   renderItem={({ item }) => (
                     <TouchableOpacity
@@ -840,6 +866,30 @@ const styles = StyleSheet.create({
   },
 
   primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#161f30',
+    borderWidth: 1,
+    borderColor: '#2b3850',
+    borderRadius: 10,
+    marginHorizontal: 12,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    height: 44,
+  },
+
+  searchIcon: { fontSize: 15, marginEnd: 8 },
+
+  searchInput: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 14,
+    textAlign: 'left',
+  },
+
+  searchClear: { color: '#9aa8bd', fontSize: 16, paddingHorizontal: 4 },
 
   list: { padding: 12 },
   listItem: {
