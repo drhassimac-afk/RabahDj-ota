@@ -55,21 +55,30 @@ type Channel = {
 type Screen = 'login' | 'categories' | 'channels';
 
 // ============================================================
-// مشغّل الفيديو (ملء شاشة + تحكم بالسحب بالصوت/الإضاءة)
+// مشغّل الفيديو (ملء شاشة + تحكم بالسحب بالصوت/الإضاءة + play/pause + تالي/سابق)
 // ============================================================
 function PlayerView({
   streamUrl,
   channelName,
   onMinimize,
   onClose,
+  hasNext,
+  hasPrevious,
+  onNext,
+  onPrevious,
 }: {
   streamUrl: string;
   channelName: string;
   onMinimize: () => void;
   onClose: () => void;
+  hasNext: boolean;
+  hasPrevious: boolean;
+  onNext: () => void;
+  onPrevious: () => void;
 }) {
   const [fullscreen, setFullscreen] = useState(false);
   const fullscreenRef = useRef(false);
+  const [isPlaying, setIsPlaying] = useState(true);
   const [indicator, setIndicator] = useState<{
     type: 'brightness' | 'volume';
     value: number;
@@ -84,6 +93,10 @@ function PlayerView({
   const player = useVideoPlayer(streamUrl, (p) => {
     p.play();
   });
+
+  useEffect(() => {
+    setIsPlaying(true);
+  }, [streamUrl]);
 
   useEffect(() => {
     (async () => {
@@ -144,6 +157,16 @@ function PlayerView({
     }
   };
 
+  const togglePlayPause = () => {
+    if (isPlaying) {
+      player.pause();
+      setIsPlaying(false);
+    } else {
+      player.play();
+      setIsPlaying(true);
+    }
+  };
+
   const showIndicator = (type: 'brightness' | 'volume', value: number) => {
     setIndicator({ type, value });
     if (hideIndicatorTimeout.current) clearTimeout(hideIndicatorTimeout.current);
@@ -153,7 +176,8 @@ function PlayerView({
   // نصف الشاشة الأيسر: إضاءة — نصف الشاشة الأيمن: صوت
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
+      onStartShouldSetPanResponder: () => fullscreenRef.current,
+      onStartShouldSetPanResponderCapture: () => false,
       onMoveShouldSetPanResponder: (_, gestureState) =>
         fullscreenRef.current && Math.abs(gestureState.dy) > 8,
       onPanResponderGrant: () => {
@@ -208,38 +232,41 @@ function PlayerView({
           fullscreen && styles.videoContainerFullscreen,
         ]}
       >
-        {/* طبقة الفيديو والسحب (إضاءة/صوت) — منفصلة عن الأزرار */}
-        <View style={StyleSheet.absoluteFill} {...panResponder.panHandlers}>
-          <VideoView
-            player={player}
-            style={styles.video}
-            contentFit="contain"
-            nativeControls={false}
+        <VideoView
+          player={player}
+          style={styles.video}
+          contentFit="contain"
+          nativeControls={false}
+          pointerEvents="none"
+          surfaceType="textureView"
+        />
+
+        {/* طبقة السحب شفافة منفصلة فوق الفيديو — تلتقط اللمسة مباشرة */}
+        <View
+          style={StyleSheet.absoluteFill}
+          pointerEvents="box-only"
+          {...panResponder.panHandlers}
+        />
+
+        {indicator && (
+          <View
+            style={[
+              styles.gestureIndicator,
+              indicator.type === 'brightness'
+                ? styles.gestureIndicatorLeft
+                : styles.gestureIndicatorRight,
+            ]}
             pointerEvents="none"
-            surfaceType="textureView"
-          />
+          >
+            <Text style={styles.gestureIndicatorIcon}>
+              {indicator.type === 'brightness' ? '☀️' : '🔊'}
+            </Text>
+            <Text style={styles.gestureIndicatorText}>
+              {Math.round(indicator.value * 100)}%
+            </Text>
+          </View>
+        )}
 
-          {indicator && (
-            <View
-              style={[
-                styles.gestureIndicator,
-                indicator.type === 'brightness'
-                  ? styles.gestureIndicatorLeft
-                  : styles.gestureIndicatorRight,
-              ]}
-              pointerEvents="none"
-            >
-              <Text style={styles.gestureIndicatorIcon}>
-                {indicator.type === 'brightness' ? '☀️' : '🔊'}
-              </Text>
-              <Text style={styles.gestureIndicatorText}>
-                {Math.round(indicator.value * 100)}%
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* الأزرار خارج طبقة الـ PanResponder — لا يمكن لسحبة الإضاءة/الصوت تسرق لمستها */}
         {fullscreen && (
           <TouchableOpacity
             style={styles.miniBackInFullscreen}
@@ -257,6 +284,29 @@ function PlayerView({
             {fullscreen ? '⛶ خروج' : '⛶ ملء الشاشة'}
           </Text>
         </TouchableOpacity>
+
+        {/* أزرار التحكم السفلية: سابق / تشغيل-إيقاف / تالي */}
+        <View style={styles.controlsBar}>
+          <TouchableOpacity
+            style={[styles.controlButton, !hasPrevious && styles.controlButtonDisabled]}
+            onPress={onPrevious}
+            disabled={!hasPrevious}
+          >
+            <Text style={styles.controlButtonText}>⏮</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.controlButtonPlay} onPress={togglePlayPause}>
+            <Text style={styles.controlButtonText}>{isPlaying ? '⏸' : '▶'}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.controlButton, !hasNext && styles.controlButtonDisabled]}
+            onPress={onNext}
+            disabled={!hasNext}
+          >
+            <Text style={styles.controlButtonText}>⏭</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -300,7 +350,6 @@ function MiniPlayer({
         </Text>
       </TouchableOpacity>
 
-      {/* أصبح زر الإغلاق شقيقًا (sibling) وليس متداخلاً داخل الزر الرئيسي */}
       <TouchableOpacity style={styles.miniPlayerClose} onPress={onClose}>
         <Text style={styles.miniPlayerCloseText}>✕</Text>
       </TouchableOpacity>
@@ -326,6 +375,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   const [activeChannel, setActiveChannel] = useState<{
     url: string;
     name: string;
+    index: number;
   } | null>(null);
   const [playerMinimized, setPlayerMinimized] = useState(false);
 
@@ -424,12 +474,36 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     }
   }
 
+  function playChannelAtIndex(index: number) {
+    if (!credentials) return;
+    const channel = channels[index];
+    if (!channel) return;
+
+    const url = getStreamUrl(credentials, String(channel.stream_id), 'm3u8');
+    setActiveChannel({ url, name: channel.name || 'قناة', index });
+  }
+
   function openChannel(channel: Channel) {
     if (!credentials) return;
 
+    const index = channels.findIndex((c) => c.stream_id === channel.stream_id);
     const url = getStreamUrl(credentials, String(channel.stream_id), 'm3u8');
-    setActiveChannel({ url, name: channel.name || 'قناة' });
+    setActiveChannel({ url, name: channel.name || 'قناة', index });
     setPlayerMinimized(false);
+  }
+
+  function goToNextChannel() {
+    if (!activeChannel) return;
+    if (activeChannel.index < channels.length - 1) {
+      playChannelAtIndex(activeChannel.index + 1);
+    }
+  }
+
+  function goToPreviousChannel() {
+    if (!activeChannel) return;
+    if (activeChannel.index > 0) {
+      playChannelAtIndex(activeChannel.index - 1);
+    }
   }
 
   async function logout() {
@@ -504,6 +578,10 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
             channelName={activeChannel!.name}
             onMinimize={() => setPlayerMinimized(true)}
             onClose={closePlayer}
+            hasNext={activeChannel!.index < channels.length - 1}
+            hasPrevious={activeChannel!.index > 0}
+            onNext={goToNextChannel}
+            onPrevious={goToPreviousChannel}
           />
         </View>
       ) : (
@@ -632,7 +710,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
             <MiniPlayer
               streamUrl={activeChannel!.url}
               channelName={activeChannel!.name}
-              onExpand={() => { Alert.alert('تجربة', 'onExpand استُدعيت'); setPlayerMinimized(false); }}
+              onExpand={() => setPlayerMinimized(false)}
               onClose={closePlayer}
             />
           )}
@@ -823,6 +901,43 @@ const styles = StyleSheet.create({
 
   fullscreenText: { color: '#fff', fontSize: 14, fontWeight: '600' },
 
+  controlsBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 32,
+    zIndex: 30,
+    elevation: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+
+  controlButton: {
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  controlButtonPlay: {
+    backgroundColor: 'rgba(255,30,39,0.85)',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  controlButtonDisabled: {
+    opacity: 0.35,
+  },
+
+  controlButtonText: { color: '#fff', fontSize: 20 },
+
   video: { flex: 1, backgroundColor: '#000' },
 
   gestureIndicator: {
@@ -845,7 +960,7 @@ const styles = StyleSheet.create({
   miniPlayerWrapper: {
     position: 'absolute',
     right: 12,
-    bottom: 12,
+    bottom: 32,
     zIndex: 50,
   },
 
