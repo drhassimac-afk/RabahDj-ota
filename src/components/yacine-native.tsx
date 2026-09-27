@@ -120,6 +120,7 @@ function PlayerView({
   }, []);
 
   const toggleFullscreen = async () => {
+    Alert.alert('تجربة', 'toggleFullscreen استُدعيت');
     const nextFullscreen = !fullscreenRef.current;
 
     fullscreenRef.current = nextFullscreen;
@@ -293,6 +294,7 @@ function MiniPlayer({
           contentFit="cover"
           nativeControls={false}
           pointerEvents="none"
+          surfaceType="textureView"
         />
         <Text style={styles.miniPlayerLabel} numberOfLines={1}>
           {channelName}
@@ -631,7 +633,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
             <MiniPlayer
               streamUrl={activeChannel!.url}
               channelName={activeChannel!.name}
-              onExpand={() => setPlayerMinimized(false)}
+              onExpand={() => { Alert.alert('تجربة', 'onExpand استُدعيت'); setPlayerMinimized(false); }}
               onClose={closePlayer}
             />
           )}
