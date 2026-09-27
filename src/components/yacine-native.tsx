@@ -122,7 +122,6 @@ function PlayerView({
   const toggleFullscreen = async () => {
     const nextFullscreen = !fullscreenRef.current;
 
-    // نبدل الواجهة بصريًا أولاً، بغض النظر عن نجاح قفل الاتجاه
     fullscreenRef.current = nextFullscreen;
     setFullscreen(nextFullscreen);
 
@@ -142,7 +141,6 @@ function PlayerView({
       }
     } catch (error) {
       console.warn('Fullscreen orientation error:', error);
-      // لا نظهر Alert ولا نتراجع عن الواجهة، فقط الاتجاه قد لا يتغير
     }
   };
 
@@ -158,24 +156,22 @@ function PlayerView({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gestureState) =>
         fullscreenRef.current && Math.abs(gestureState.dy) > 8,
-      onPanResponderGrant: (evt) => {
+      onPanResponderGrant: () => {
         brightnessStart.current = currentBrightness.current;
         volumeStart.current = currentVolume.current;
       },
       onPanResponderMove: (evt, gestureState) => {
         const { width, height } = Dimensions.get('window');
         const touchX = evt.nativeEvent.locationX;
-        const delta = -gestureState.dy / height; // سحب لفوق = زيادة
+        const delta = -gestureState.dy / height;
 
         if (touchX < width / 2) {
-          // إضاءة
           let next = brightnessStart.current + delta;
           next = Math.max(0, Math.min(1, next));
           currentBrightness.current = next;
           Brightness.setBrightnessAsync(next).catch(() => {});
           showIndicator('brightness', next);
         } else {
-          // صوت
           let next = volumeStart.current + delta;
           next = Math.max(0, Math.min(1, next));
           currentVolume.current = next;
@@ -211,37 +207,39 @@ function PlayerView({
           styles.videoContainer,
           fullscreen && styles.videoContainerFullscreen,
         ]}
-        {...panResponder.panHandlers}
       >
-        <VideoView
-          player={player}
-          style={styles.video}
-          contentFit="contain"
-          nativeControls={false}
-          pointerEvents="none"
-          surfaceType="textureView"
-        />
-
-
-        {indicator && (
-          <View
-            style={[
-              styles.gestureIndicator,
-              indicator.type === 'brightness'
-                ? styles.gestureIndicatorLeft
-                : styles.gestureIndicatorRight,
-            ]}
+        {/* طبقة الفيديو والسحب (إضاءة/صوت) — منفصلة عن الأزرار */}
+        <View style={StyleSheet.absoluteFill} {...panResponder.panHandlers}>
+          <VideoView
+            player={player}
+            style={styles.video}
+            contentFit="contain"
+            nativeControls={false}
             pointerEvents="none"
-          >
-            <Text style={styles.gestureIndicatorIcon}>
-              {indicator.type === 'brightness' ? '☀️' : '🔊'}
-            </Text>
-            <Text style={styles.gestureIndicatorText}>
-              {Math.round(indicator.value * 100)}%
-            </Text>
-          </View>
-        )}
+            surfaceType="textureView"
+          />
 
+          {indicator && (
+            <View
+              style={[
+                styles.gestureIndicator,
+                indicator.type === 'brightness'
+                  ? styles.gestureIndicatorLeft
+                  : styles.gestureIndicatorRight,
+              ]}
+              pointerEvents="none"
+            >
+              <Text style={styles.gestureIndicatorIcon}>
+                {indicator.type === 'brightness' ? '☀️' : '🔊'}
+              </Text>
+              <Text style={styles.gestureIndicatorText}>
+                {Math.round(indicator.value * 100)}%
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* الأزرار خارج طبقة الـ PanResponder — لا يمكن لسحبة الإضاءة/الصوت تسرق لمستها */}
         {fullscreen && (
           <TouchableOpacity
             style={styles.miniBackInFullscreen}
@@ -299,9 +297,11 @@ function MiniPlayer({
         <Text style={styles.miniPlayerLabel} numberOfLines={1}>
           {channelName}
         </Text>
-        <TouchableOpacity style={styles.miniPlayerClose} onPress={onClose}>
-          <Text style={styles.miniPlayerCloseText}>✕</Text>
-        </TouchableOpacity>
+      </TouchableOpacity>
+
+      {/* أصبح زر الإغلاق شقيقًا (sibling) وليس متداخلاً داخل الزر الرئيسي */}
+      <TouchableOpacity style={styles.miniPlayerClose} onPress={onClose}>
+        <Text style={styles.miniPlayerCloseText}>✕</Text>
       </TouchableOpacity>
     </View>
   );
@@ -595,7 +595,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
 
           {screen === 'channels' && (
             <View style={styles.flex}>
-              {renderHeader(selectedCategory || '📺 القنوات')}
+              {renderHeader(selectedCategory || ' 📺 القنوات')}
 
               {loading ? (
                 <View style={styles.center}>
@@ -687,7 +687,6 @@ const styles = StyleSheet.create({
   },
 
   closeButtonText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
-
   headerSpacer: { width: 60 },
 
   logoutButton: {
@@ -742,7 +741,6 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
 
   list: { padding: 12 },
-
   listItem: {
     minHeight: 64,
     backgroundColor: '#161f30',
@@ -796,24 +794,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 10,
-  },
-
-  gestureLayerLeft: {
-    position: 'absolute',
-    left: 0,
-    width: '50%',
-    top: 60,
-    bottom: 0,
-    zIndex: 20,
-  },
-
-  gestureLayerRight: {
-    position: 'absolute',
-    right: 0,
-    width: '50%',
-    top: 0,
-    bottom: 60,
-    zIndex: 20,
   },
 
   fullscreenButton: {
@@ -901,6 +881,7 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 60,
   },
 
   miniPlayerCloseText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
