@@ -85,7 +85,11 @@ function ChannelEpgLabel({
   const [title, setTitle] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!epgEnabled) return;
+    if (!epgEnabled) {
+      setTitle(null);
+      return;
+    }
+
     let cancelled = false;
     const key = `${credentials.server}_${credentials.username}_${channel.stream_id}`;
 
@@ -202,23 +206,9 @@ useEffect(() => {
   const volumeStart = useRef(0.5);
   const initialBrightness = useRef<number | null>(null);
 
-useEffect(() => {
-  Brightness.getBrightnessAsync()
-    .then((value) => {
-      initialBrightness.current = value;
-      currentBrightness.current = value;
-    })
-    .catch(() => {});
-
-  return () => {
-    if (initialBrightness.current !== null) {
-      Brightness.setBrightnessAsync(initialBrightness.current).catch(() => {});
-    }
-  };
-}, []);
 
 const currentBrightness = useRef(0.5);
-  const originalBrightness = useRef<number | null>(null);
+
   const currentVolume = useRef(0.5);
   const hideIndicatorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -259,9 +249,9 @@ const currentBrightness = useRef(0.5);
           setVideoError('تعذر تشغيل البث، جارٍ تجربة صيغة بديلة...');
 
           const fallbackUrl = streamUrl.replace(
-            /\.m3u8(?=\?.*)?$/i,
-            '.ts'
-          );
+              /\.m3u8(\?.*)?$/i,
+              '.ts$1'
+            );
 
           player.replace({ uri: fallbackUrl });
           player.play();
@@ -294,8 +284,8 @@ const currentBrightness = useRef(0.5);
       try {
         const b = await Brightness.getBrightnessAsync();
 
-        if (originalBrightness.current === null) {
-          originalBrightness.current = b;
+        if (initialBrightness.current === null) {
+          initialBrightness.current = b;
         }
 
         currentBrightness.current = b;
@@ -314,9 +304,16 @@ const currentBrightness = useRef(0.5);
     VolumeManager.showNativeVolumeUI({ enabled: false });
 
     return () => {
-      VolumeManager.showNativeVolumeUI({ enabled: true });
-      if (hideIndicatorTimeout.current) clearTimeout(hideIndicatorTimeout.current);
-    };
+        VolumeManager.showNativeVolumeUI({ enabled: true });
+        if (hideIndicatorTimeout.current) clearTimeout(hideIndicatorTimeout.current);
+
+        if (initialBrightness.current !== null) {
+          Brightness.setBrightnessAsync(initialBrightness.current).catch(() => {});
+        }
+
+        NavBar.setVisibilityAsync('visible').catch(() => {});
+        ScreenOrientation.unlockAsync().catch(() => {});
+      };
   }, []);
 
   const toggleFullscreen = async () => {
@@ -341,20 +338,7 @@ const currentBrightness = useRef(0.5);
       console.warn('Fullscreen orientation error:', error);
     }
   };
-  const restoreOriginalBrightness = async () => {
-    const original = originalBrightness.current;
-
-    if (original === null) return;
-
-    try {
-      await Brightness.setBrightnessAsync(original);
-      currentBrightness.current = original;
-    } catch (error) {
-      console.warn('Restore brightness error:', error);
-    }
-  };
-
-  const minimizePlayer = async () => {
+const minimizePlayer = async () => {
     try {
       if (fullscreenRef.current) {
         fullscreenRef.current = false;
@@ -449,10 +433,7 @@ const currentBrightness = useRef(0.5);
           </Text>
 
           <TouchableOpacity
-            onPress={async () => {
-              await restoreOriginalBrightness();
-              onClose();
-            }}
+            onPress={onClose}
             style={styles.closeButton}
           >
             <Text style={styles.closeButtonText}>✕</Text>
@@ -712,9 +693,9 @@ return () => {
 
   const toggleFavorite = useCallback(async (channel: Channel) => {
     setFavorites((prev) => {
-      const exists = prev.some((c) => c.stream_id === channel.stream_id);
+      const exists = prev.some((c) => String(c.stream_id) === String(channel.stream_id));
       const next = exists
-        ? prev.filter((c) => c.stream_id !== channel.stream_id)
+        ? prev.filter((c) => String(c.stream_id) !== String(channel.stream_id))
         : [...prev, channel];
       AsyncStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(next)).catch(() => {});
       return next;
@@ -869,7 +850,7 @@ return () => {
   const openChannel = useCallback((channel: Channel) => {
     if (!credentials) return;
 
-    const index = channels.findIndex((c) => c.stream_id === channel.stream_id);
+    const index = channels.findIndex((c) => String(c.stream_id) === String(channel.stream_id));
     const url = getStreamUrl(credentials, String(channel.stream_id), 'm3u8');
 
     // تجنب إعادة تشغيل نفس القناة إذا كانت مفتوحة بالفعل
@@ -922,7 +903,7 @@ return () => {
 
   function openMovie(movie: Channel) {
     if (!credentials) return;
-    const index = movies.findIndex((m) => m.stream_id === movie.stream_id);
+    const index = movies.findIndex((m) => String(m.stream_id) === String(movie.stream_id));
     const url = getVodStreamUrl(credentials, movie.stream_id, movie.container_extension || 'mp4');
     setActiveChannel({ url, name: movie.name || 'فيلم', index, source: 'movie' });
     setPlayerMinimized(false);
@@ -966,6 +947,10 @@ return () => {
   }
 
   function goBack() {
+      if (activeChannel) {
+        closePlayer();
+        return;
+      }
     if (screen === 'channels') {
       setScreen('categories');
       return;
@@ -988,12 +973,13 @@ return () => {
     });
 
     return () => sub.remove();
-  }, [screen]);
+    }, [screen, activeChannel]);
 
 
   function closePlayer() {
     setActiveChannel(null);
     setPlayerMinimized(false);
+      NavBar.setVisibilityAsync('visible').catch(() => {});
     ScreenOrientation.unlockAsync().catch(() => {});
   }
 
@@ -1033,9 +1019,23 @@ return () => {
         }
       }
 
+      // حذف EPG للقنوات التي خرجت من النطاق المرئي
+      if (credentials) {
+        const prefix = `${credentials.server}_${credentials.username}_`;
+
+        for (const key of epgCache.keys()) {
+          if (!key.startsWith(prefix)) continue;
+
+          const streamId = key.slice(prefix.length);
+          if (!next.has(streamId)) {
+            epgCache.delete(key);
+          }
+        }
+      }
+
       setVisibleEpgIds(next);
     },
-    []
+    [credentials]
   );
 
   const channelsViewabilityConfig = React.useMemo(
