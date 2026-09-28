@@ -1,10 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useKeepAwake } from 'expo-keep-awake';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {
+import { Image,
   ActivityIndicator,
   Alert,
+  BackHandler,
   Dimensions,
+  useWindowDimensions,
   FlatList,
   KeyboardAvoidingView,
   Modal,
@@ -64,35 +67,60 @@ type Screen = 'login' | 'dashboard' | 'categories' | 'channels' | 'movies-catego
 const FAVORITES_STORAGE_KEY = 'rabah_iptv_favorites';
 const LAST_WATCHED_STORAGE_KEY = 'rabah_iptv_last_watched';
 
+// كاش عام لـ EPG لتجنب إرسال طلب متكرر لنفس القناة
+const epgCache = new Map<string, string | null>();
+
 // ============================================================
 // عرض اسم البرنامج الحالي لقناة معيّنة (EPG قصير)
 // ============================================================
 function ChannelEpgLabel({
   channel,
   credentials,
+  epgEnabled,
 }: {
   channel: Channel;
   credentials: Credentials;
+  epgEnabled: boolean;
 }) {
   const [title, setTitle] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!epgEnabled) return;
     let cancelled = false;
+    const key = `${credentials.server}_${credentials.username}_${channel.stream_id}`;
+
+    if (epgCache.has(key)) {
+      const cachedTitle = epgCache.get(key);
+      if (cachedTitle && !cancelled) {
+        setTitle(cachedTitle);
+      }
+      return () => {
+        cancelled = true;
+      };
+    }
+
     (async () => {
       try {
         const data = await getShortEpg(credentials, String(channel.stream_id), 1);
         const listing = data?.epg_listings?.[0];
-        if (listing?.title && !cancelled) {
-          setTitle(decodeBase64Text(listing.title));
+        const epgTitle = listing?.title
+          ? decodeBase64Text(listing.title)
+          : null;
+
+        epgCache.set(key, epgTitle);
+
+        if (epgTitle && !cancelled) {
+          setTitle(epgTitle);
         }
       } catch {
         // بعض السيرفرات ما عندهاش EPG — نتجاهل بصمت
       }
     })();
+
     return () => {
       cancelled = true;
     };
-  }, [channel.stream_id]);
+  }, [channel.stream_id, credentials, epgEnabled]);
 
   if (!title) return null;
 
@@ -125,9 +153,46 @@ function PlayerView({
   onNext: () => void;
   onPrevious: () => void;
 }) {
+  const { width, height } = useWindowDimensions();
+  const dims = useRef({ width, height });
+
+  useEffect(() => {
+    dims.current = { width, height };
+  }, [width, height]);
+
+  useKeepAwake();
   const [fullscreen, setFullscreen] = useState(false);
   const fullscreenRef = useRef(false);
   const [isPlaying, setIsPlaying] = useState(true);
+
+const [showControls, setShowControls] = useState(true);
+const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+const showControlsTemporarily = () => {
+  setShowControls(true);
+  if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
+  controlsTimeout.current = setTimeout(() => {
+    if (fullscreenRef.current && isPlaying) {
+      setShowControls(false);
+    }
+  }, 2500);
+};
+
+useEffect(() => {
+  if (fullscreenRef.current) {
+    showControlsTemporarily();
+  } else {
+    setShowControls(true);
+    if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
+  }
+}, [fullscreen, isPlaying, streamUrl]);
+
+useEffect(() => {
+  return () => {
+    if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
+    if (hideIndicatorTimeout.current) clearTimeout(hideIndicatorTimeout.current);
+  };
+}, []);
   const [indicator, setIndicator] = useState<{
     type: 'brightness' | 'volume';
     value: number;
@@ -135,13 +200,81 @@ function PlayerView({
 
   const brightnessStart = useRef(0.5);
   const volumeStart = useRef(0.5);
-  const currentBrightness = useRef(0.5);
+  const initialBrightness = useRef<number | null>(null);
+
+useEffect(() => {
+  Brightness.getBrightnessAsync()
+    .then((value) => {
+      initialBrightness.current = value;
+      currentBrightness.current = value;
+    })
+    .catch(() => {});
+
+  return () => {
+    if (initialBrightness.current !== null) {
+      Brightness.setBrightnessAsync(initialBrightness.current).catch(() => {});
+    }
+  };
+}, []);
+
+const currentBrightness = useRef(0.5);
+  const originalBrightness = useRef<number | null>(null);
   const currentVolume = useRef(0.5);
   const hideIndicatorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const player = useVideoPlayer(streamUrl, (p) => {
     p.play();
   });
+
+  const [videoStatus, setVideoStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const streamRetried = useRef(false);
+
+  useEffect(() => {
+    streamRetried.current = false;
+    setVideoStatus('loading');
+    setVideoError(null);
+
+    const subscription = player.addListener('statusChange', (event) => {
+      if (event.status === 'readyToPlay') {
+        setVideoStatus('ready');
+        setVideoError(null);
+        return;
+      }
+
+      if (event.status === 'loading') {
+        setVideoStatus('loading');
+        return;
+      }
+
+      if (event.status === 'error') {
+        const message = event.error?.message || 'تعذر تشغيل البث';
+
+        if (
+          !streamRetried.current &&
+          /\.m3u8(?:\?.*)?$/i.test(streamUrl)
+        ) {
+          streamRetried.current = true;
+          setVideoStatus('loading');
+          setVideoError('تعذر تشغيل البث، جارٍ تجربة صيغة بديلة...');
+
+          const fallbackUrl = streamUrl.replace(
+            /\.m3u8(?=\?.*)?$/i,
+            '.ts'
+          );
+
+          player.replace({ uri: fallbackUrl });
+          player.play();
+          return;
+        }
+
+        setVideoStatus('error');
+        setVideoError(message);
+      }
+    });
+
+    return () => subscription.remove();
+  }, [player, streamUrl]);
 
   useEffect(() => {
     setIsPlaying(true);
@@ -160,6 +293,11 @@ function PlayerView({
 
       try {
         const b = await Brightness.getBrightnessAsync();
+
+        if (originalBrightness.current === null) {
+          originalBrightness.current = b;
+        }
+
         currentBrightness.current = b;
       } catch {
         // تجاهل لو ما فيه صلاحية
@@ -192,18 +330,43 @@ function PlayerView({
         NavBar.setVisibilityAsync('hidden').catch(() => {});
 
         await ScreenOrientation.lockAsync(
-          ScreenOrientation.OrientationLock.LANDSCAPE_LEFT
+          ScreenOrientation.OrientationLock.LANDSCAPE
         );
       } else {
         NavBar.setVisibilityAsync('visible').catch(() => {});
 
-        await ScreenOrientation.lockAsync(
-          ScreenOrientation.OrientationLock.PORTRAIT
-        );
+        await ScreenOrientation.unlockAsync();
       }
     } catch (error) {
       console.warn('Fullscreen orientation error:', error);
     }
+  };
+  const restoreOriginalBrightness = async () => {
+    const original = originalBrightness.current;
+
+    if (original === null) return;
+
+    try {
+      await Brightness.setBrightnessAsync(original);
+      currentBrightness.current = original;
+    } catch (error) {
+      console.warn('Restore brightness error:', error);
+    }
+  };
+
+  const minimizePlayer = async () => {
+    try {
+      if (fullscreenRef.current) {
+        fullscreenRef.current = false;
+        setFullscreen(false);
+        NavBar.setVisibilityAsync('visible').catch(() => {});
+        await ScreenOrientation.unlockAsync();
+      }
+    } catch (error) {
+      console.warn('Minimize orientation error:', error);
+    }
+
+    onMinimize();
   };
 
   const togglePlayPause = () => {
@@ -226,14 +389,17 @@ function PlayerView({
   const touchStartX = useRef(0);
 
   const panGesture = Gesture.Pan()
+    .runOnJS(true)
     .onBegin((e) => {
+      showControlsTemporarily();
       touchStartX.current = e.x;
       brightnessStart.current = currentBrightness.current;
       volumeStart.current = currentVolume.current;
     })
     .onUpdate((e) => {
       if (!fullscreenRef.current) return;
-      const { width, height } = Dimensions.get('window');
+
+      const { width, height } = dims.current;
       const delta = -e.translationY / height;
 
       if (touchStartX.current < width / 2) {
@@ -252,13 +418,29 @@ function PlayerView({
     })
     .minDistance(8);
 
+  const tapGesture = Gesture.Tap()
+    .runOnJS(true)
+    .onEnd(() => {
+      if (fullscreenRef.current) {
+        if (showControls) {
+          if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
+          setShowControls(false);
+        } else {
+          showControlsTemporarily();
+        }
+      }
+    });
+
+  const videoGestures = Gesture.Exclusive(tapGesture, panGesture);
+
+
   return (
     <View style={styles.playerContainer}>
       {fullscreen && <StatusBar hidden />}
 
       {!fullscreen && (
         <View style={styles.header}>
-          <TouchableOpacity onPress={onMinimize} style={styles.backButton}>
+          <TouchableOpacity onPress={minimizePlayer} style={styles.backButton}>
             <Text style={styles.backText}>تصغير ▾</Text>
           </TouchableOpacity>
 
@@ -266,7 +448,13 @@ function PlayerView({
             {channelName}
           </Text>
 
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+          <TouchableOpacity
+            onPress={async () => {
+              await restoreOriginalBrightness();
+              onClose();
+            }}
+            style={styles.closeButton}
+          >
             <Text style={styles.closeButtonText}>✕</Text>
           </TouchableOpacity>
         </View>
@@ -287,8 +475,39 @@ function PlayerView({
           surfaceType="textureView"
         />
 
+        {videoStatus === 'loading' && (
+          <View style={styles.videoMessageOverlay} pointerEvents="none">
+            <ActivityIndicator size="large" />
+            <Text style={styles.videoMessageText}>
+              {videoError || 'جارٍ تحميل البث...'}
+            </Text>
+          </View>
+        )}
+
+        {videoStatus === 'error' && (
+          <View style={styles.videoMessageOverlay}>
+            <Text style={styles.videoErrorIcon}>⚠️</Text>
+            <Text style={styles.videoMessageText}>
+              {videoError || 'تعذر تشغيل البث'}
+            </Text>
+
+            <TouchableOpacity
+              style={styles.videoRetryButton}
+              onPress={() => {
+                streamRetried.current = false;
+                setVideoStatus('loading');
+                setVideoError(null);
+                player.replace({ uri: streamUrl });
+                player.play();
+              }}
+            >
+              <Text style={styles.videoRetryText}>إعادة المحاولة</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* طبقة السحب شفافة منفصلة فوق الفيديو — gesture-handler يلتقط اللمسة قبل أي native surface */}
-        <GestureDetector gesture={panGesture}>
+        <GestureDetector gesture={videoGestures}>
           <View style={StyleSheet.absoluteFill} />
         </GestureDetector>
 
@@ -311,26 +530,29 @@ function PlayerView({
           </View>
         )}
 
-        {fullscreen && (
+        {fullscreen && showControls && (
           <TouchableOpacity
             style={styles.miniBackInFullscreen}
-            onPress={onMinimize}
+            onPress={minimizePlayer}
           >
             <Text style={styles.fullscreenText}>▾ تصغير</Text>
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity
-          style={styles.fullscreenButton}
-          onPress={toggleFullscreen}
-        >
-          <Text style={styles.fullscreenText}>
-            {fullscreen ? '⛶ خروج' : '⛶ ملء الشاشة'}
-          </Text>
-        </TouchableOpacity>
+        {showControls && (
+          <TouchableOpacity
+            style={styles.fullscreenButton}
+            onPress={toggleFullscreen}
+          >
+            <Text style={styles.fullscreenText}>
+              {fullscreen ? '⛶ خروج' : '⛶ ملء الشاشة'}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* أزرار التحكم السفلية: سابق / تشغيل-إيقاف / تالي */}
-        <View style={styles.controlsBar}>
+        {showControls && (
+          <View style={styles.controlsBar}>
           <TouchableOpacity
             style={[styles.controlButton, !hasPrevious && styles.controlButtonDisabled]}
             onPress={onPrevious}
@@ -351,6 +573,7 @@ function PlayerView({
             <Text style={styles.controlButtonText}>⏭</Text>
           </TouchableOpacity>
         </View>
+        )}
       </View>
     </View>
   );
@@ -370,29 +593,33 @@ function MiniPlayer({
   onExpand: () => void;
   onClose: () => void;
 }) {
+  const { width, height } = useWindowDimensions();
+  useKeepAwake();
   const player = useVideoPlayer(streamUrl, (p) => {
     p.play();
   });
 
-  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [pos, setPos] = useState({ x: -16, y: -24 });
   const dragStart = useRef({ x: 0, y: 0 });
 
   const panGesture = Gesture.Pan()
+    .runOnJS(true)
     .onBegin(() => {
       dragStart.current = { x: pos.x, y: pos.y };
     })
     .onUpdate((e) => {
-      const { width, height } = Dimensions.get('window');
       let nx = dragStart.current.x + e.translationX;
       let ny = dragStart.current.y + e.translationY;
-      // حدود تقريبية باش يبقى الفيديو المصغّر داخل الشاشة
-      nx = Math.max(-width + 180, Math.min(width - 180, nx));
-      ny = Math.max(-height + 130, Math.min(height - 130, ny));
+      // حدود داخل الشاشة مع هامش صغير
+      nx = Math.max(-(width - 170), Math.min(16, nx));
+      ny = Math.max(-(height - 120), Math.min(24, ny));
       setPos({ x: nx, y: ny });
     })
     .minDistance(6);
 
-  const tapGesture = Gesture.Tap().onEnd(() => {
+  const tapGesture = Gesture.Tap()
+    .runOnJS(true)
+    .onEnd(() => {
     onExpand();
   });
 
@@ -415,6 +642,7 @@ function MiniPlayer({
             pointerEvents="none"
             surfaceType="textureView"
           />
+
           <Text style={styles.miniPlayerLabel} numberOfLines={1}>
             {channelName}
           </Text>
@@ -447,6 +675,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   const [lastWatched, setLastWatched] = useState<Channel | null>(null);
   const [movieCategories, setMovieCategories] = useState<CategoryItem[]>([]);
   const [movies, setMovies] = useState<Channel[]>([]);
+  const [movieSearchQuery, setMovieSearchQuery] = useState('');
   const [selectedMovieCategory, setSelectedMovieCategory] = useState('');
 
   const [activeChannel, setActiveChannel] = useState<{
@@ -460,18 +689,13 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    ScreenOrientation.lockAsync(
-      ScreenOrientation.OrientationLock.PORTRAIT
-    ).catch(() => {});
+    ScreenOrientation.unlockAsync().catch(() => {});
 
     loadSavedCredentials();
     loadFavorites();
     loadLastWatched();
-
-    return () => {
-      ScreenOrientation.lockAsync(
-        ScreenOrientation.OrientationLock.PORTRAIT
-      ).catch(() => {});
+return () => {
+      ScreenOrientation.unlockAsync().catch(() => {});
     };
   }, []);
 
@@ -486,7 +710,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     }
   }
 
-  async function toggleFavorite(channel: Channel) {
+  const toggleFavorite = useCallback(async (channel: Channel) => {
     setFavorites((prev) => {
       const exists = prev.some((c) => c.stream_id === channel.stream_id);
       const next = exists
@@ -495,10 +719,15 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
       AsyncStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(next)).catch(() => {});
       return next;
     });
-  }
+  }, []);
+
+  const favoriteIds = React.useMemo(
+    () => new Set(favorites.map((c) => String(c.stream_id))),
+    [favorites]
+  );
 
   function isFavorite(channel: Channel) {
-    return favorites.some((c) => c.stream_id === channel.stream_id);
+    return favoriteIds.has(String(channel.stream_id));
   }
 
   function openFavorites() {
@@ -521,8 +750,24 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
 
   function resumeLastWatched() {
     if (!credentials || !lastWatched) return;
-    const url = getStreamUrl(credentials, String(lastWatched.stream_id), 'm3u8');
-    setActiveChannel({ url, name: lastWatched.name || 'قناة', index: -1, source: 'live' });
+
+    const index = channels.findIndex(
+      (c) => String(c.stream_id) === String(lastWatched.stream_id)
+    );
+
+    const url = getStreamUrl(
+      credentials,
+      String(lastWatched.stream_id),
+      'm3u8'
+    );
+
+    setActiveChannel({
+      url,
+      name: lastWatched.name || 'قناة',
+      index: index >= 0 ? index : -1,
+      source: 'live',
+    });
+
     setPlayerMinimized(false);
   }
 
@@ -588,7 +833,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     }
   }
 
-  async function openCategory(category: CategoryItem) {
+  const openCategory = useCallback(async (category: CategoryItem) => {
     if (!credentials) return;
 
     try {
@@ -604,7 +849,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [credentials]);
 
   function playChannelAtIndex(index: number) {
     if (!credentials) return;
@@ -613,19 +858,29 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
 
     const url = getStreamUrl(credentials, String(channel.stream_id), 'm3u8');
     setActiveChannel({ url, name: channel.name || 'قناة', index, source: 'live' });
+
+    setLastWatched(channel);
+    AsyncStorage.setItem(
+      LAST_WATCHED_STORAGE_KEY,
+      JSON.stringify(channel)
+    ).catch(() => {});
   }
 
-  function openChannel(channel: Channel) {
+  const openChannel = useCallback((channel: Channel) => {
     if (!credentials) return;
 
     const index = channels.findIndex((c) => c.stream_id === channel.stream_id);
     const url = getStreamUrl(credentials, String(channel.stream_id), 'm3u8');
+
+    // تجنب إعادة تشغيل نفس القناة إذا كانت مفتوحة بالفعل
+    if (activeChannel?.url === url && !playerMinimized) return;
+
     setActiveChannel({ url, name: channel.name || 'قناة', index, source: 'live' });
     setPlayerMinimized(false);
 
     setLastWatched(channel);
     AsyncStorage.setItem(LAST_WATCHED_STORAGE_KEY, JSON.stringify(channel)).catch(() => {});
-  }
+  }, [credentials, channels, activeChannel, playerMinimized]);
 
   async function openMovieCategories() {
     if (!credentials) return;
@@ -726,10 +981,20 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     onClose();
   }
 
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      goBack();
+      return true;
+    });
+
+    return () => sub.remove();
+  }, [screen]);
+
+
   function closePlayer() {
     setActiveChannel(null);
     setPlayerMinimized(false);
-    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
+    ScreenOrientation.unlockAsync().catch(() => {});
   }
 
   function renderHeader(title: string) {
@@ -754,14 +1019,48 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     );
   }
 
-  const filteredChannels = searchQuery.trim()
-    ? channels.filter((c) =>
-        (c.name || '').toLowerCase().includes(searchQuery.trim().toLowerCase())
-      )
-    : channels;
+  const [visibleEpgIds, setVisibleEpgIds] = useState<Set<string>>(
+    () => new Set()
+  );
+
+  const onChannelsViewableItemsChanged = useCallback(
+    ({ viewableItems }: { viewableItems: Array<{ item: Channel }> }) => {
+      const next = new Set<string>();
+
+      for (const viewable of viewableItems) {
+        if (viewable?.item?.stream_id != null) {
+          next.add(String(viewable.item.stream_id));
+        }
+      }
+
+      setVisibleEpgIds(next);
+    },
+    []
+  );
+
+  const channelsViewabilityConfig = React.useMemo(
+    () => ({
+      itemVisiblePercentThreshold: 20,
+    }),
+    []
+  );
+
+  const filteredChannels = React.useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return channels;
+
+    return channels.filter((c) =>
+      (c.name || '').toLowerCase().includes(q)
+    );
+  }, [channels, searchQuery]);
 
   const showExpandedPlayer = activeChannel && !playerMinimized;
   const showMiniPlayer = activeChannel && playerMinimized;
+
+  const filteredMovies = movies.filter((movie: Channel) =>
+    (movie.name || '').toLowerCase().includes(movieSearchQuery.toLowerCase())
+  );
+
 
   return (
     <Modal
@@ -936,9 +1235,16 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
                   <Text style={styles.loadingText}>جارٍ تحميل الفئات...</Text>
                 </View>
               ) : (
-                <FlatList
+        
+
+        <FlatList<CategoryItem>
                   data={categories}
                   keyExtractor={(item, index) => String(item.category_id ?? index)}
+                  removeClippedSubviews={Platform.OS === 'android'}
+                  initialNumToRender={15}
+                  maxToRenderPerBatch={10}
+                  windowSize={5}
+                  updateCellsBatchingPeriod={40}
                   contentContainerStyle={styles.list}
                   ListEmptyComponent={
                     <Text style={styles.emptyText}>لا توجد فئات قنوات</Text>
@@ -971,6 +1277,11 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
                 <FlatList
                   data={movieCategories}
                   keyExtractor={(item, index) => String(item.category_id ?? index)}
+                  removeClippedSubviews={Platform.OS === 'android'}
+                  initialNumToRender={15}
+                  maxToRenderPerBatch={10}
+                  windowSize={5}
+                  updateCellsBatchingPeriod={40}
                   contentContainerStyle={styles.list}
                   ListEmptyComponent={
                     <Text style={styles.emptyText}>لا توجد فئات أفلام</Text>
@@ -993,6 +1304,22 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
           {screen === 'movies-list' && (
             <View style={styles.flex}>
               {renderHeader(selectedMovieCategory || '🎬 أفلام')}
+                  
+                  <TextInput
+                    value={movieSearchQuery}
+                    onChangeText={setMovieSearchQuery}
+                    placeholder="ابحث عن فيلم..."
+                    placeholderTextColor="#888"
+                    style={{
+                      backgroundColor: '#222',
+                      color: '#fff',
+                      borderRadius: 10,
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      marginHorizontal: 12,
+                      marginBottom: 10,
+                    }}
+                  />
 
               {loading ? (
                 <View style={styles.center}>
@@ -1000,9 +1327,18 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
                   <Text style={styles.loadingText}>جارٍ تحميل الأفلام...</Text>
                 </View>
               ) : (
+
+
+
+
                 <FlatList
-                  data={movies}
+                  data={filteredMovies}
                   keyExtractor={(item, index) => String(item.stream_id ?? index)}
+                  removeClippedSubviews={Platform.OS === 'android'}
+                  initialNumToRender={15}
+                  maxToRenderPerBatch={10}
+                  windowSize={5}
+                  updateCellsBatchingPeriod={40}
                   contentContainerStyle={styles.list}
                   ListEmptyComponent={
                     <Text style={styles.emptyText}>لا توجد أفلام فـ هذه الفئة</Text>
@@ -1012,7 +1348,14 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
                       style={styles.listItem}
                       onPress={() => openMovie(item)}
                     >
-                      <Text style={styles.itemIcon}>🎬</Text>
+                      {item.stream_icon ? (
+                        <Image
+                          source={{ uri: item.stream_icon }}
+                          style={styles.channelLogo}
+                        />
+                      ) : (
+                        <Text style={styles.itemIcon}>🎬</Text>
+                      )}
                       <Text style={styles.itemText} numberOfLines={2}>
                         {item.name || 'فيلم بدون اسم'}
                       </Text>
@@ -1053,6 +1396,13 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
                 <FlatList
                   data={filteredChannels}
                   keyExtractor={(item, index) => String(item.stream_id ?? index)}
+                  removeClippedSubviews={Platform.OS === 'android'}
+                  initialNumToRender={15}
+                  maxToRenderPerBatch={10}
+                  windowSize={5}
+                  updateCellsBatchingPeriod={40}
+                  onViewableItemsChanged={onChannelsViewableItemsChanged}
+                  viewabilityConfig={channelsViewabilityConfig}
                   contentContainerStyle={styles.list}
                   ListEmptyComponent={
                     <Text style={styles.emptyText}>
@@ -1074,13 +1424,24 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
                         style={styles.listItemContent}
                         onPress={() => openChannel(item)}
                       >
+                        {item.stream_icon ? (
+                        <Image
+                          source={{ uri: item.stream_icon }}
+                          style={styles.channelLogo}
+                        />
+                      ) : (
                         <Text style={styles.itemIcon}>📺</Text>
+                      )}
                         <View style={{ flex: 1, marginHorizontal: 10 }}>
                           <Text style={styles.itemText} numberOfLines={1}>
                             {item.name || 'قناة بدون اسم'}
                           </Text>
                           {credentials && (
-                            <ChannelEpgLabel channel={item} credentials={credentials} />
+                            <ChannelEpgLabel
+                              channel={item}
+                              credentials={credentials}
+                              epgEnabled={visibleEpgIds.has(String(item.stream_id))}
+                            />
                           )}
                         </View>
                         <Text style={styles.playIcon}>▶</Text>
@@ -1271,6 +1632,12 @@ const styles = StyleSheet.create({
 
   favoriteStarText: { fontSize: 20 },
 
+  channelLogo: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: '#26344d',
+  },
   itemIcon: { fontSize: 24, width: 40, textAlign: 'center' },
 
   itemText: {
@@ -1409,7 +1776,7 @@ const styles = StyleSheet.create({
   fullscreenButton: {
     position: 'absolute',
     right: 12,
-    bottom: 32,
+    bottom: 108,
     zIndex: 30,
     elevation: 30,
     backgroundColor: 'rgba(0,0,0,0.75)',
@@ -1469,6 +1836,35 @@ const styles = StyleSheet.create({
 
   controlButtonText: { color: '#fff', fontSize: 20 },
 
+  videoMessageOverlay: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: 20,
+  },
+  videoMessageText: {
+    color: '#fff',
+    fontSize: 15,
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  videoErrorIcon: {
+    fontSize: 30,
+    marginBottom: 8,
+  },
+  videoRetryButton: {
+    marginTop: 16,
+    paddingHorizontal: 22,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+  },
+  videoRetryText: {
+    color: '#111',
+    fontSize: 14,
+    fontWeight: '700',
+  },
   video: { flex: 1, backgroundColor: '#000' },
 
   gestureIndicator: {

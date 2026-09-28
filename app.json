@@ -19,8 +19,6 @@
         "backgroundColor": "#0b1220",
         "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
-      "usesCleartextTraffic": true,
-      "usesCleartextTraffic": true,
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",
@@ -34,7 +32,12 @@
         "WAKE_LOCK",
         "VIBRATE",
         "RECEIVE_BOOT_COMPLETED",
-        "WRITE_SETTINGS"
+        "WRITE_SETTINGS",
+        "android.permission.WRITE_SETTINGS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ],
       "package": "com.rabahdj.app"
     },
@@ -61,19 +64,12 @@
       "expo-video",
       "expo-brightness",
       [
-        "expo-build-properties",
-        {
-          "android": {
-            "usesCleartextTraffic": true
-          }
-        }
-      ],
-      [
         "expo-navigation-bar",
         {
           "enforceContrast": false
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -82,9 +78,12 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "7eefd5cb-ccc0-4892-8e4a-bdb72a65906c"
+        "projectId": "45a504bd-aecd-4565-ad97-dc5323906e1e"
+      },
+      "expo-navigation-bar": {
+        "enforceContrast": false
       }
     },
-    "owner": "rabahtec"
+    "owner": "rabahdfd1s-team"
   }
 }
