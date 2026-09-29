@@ -176,3 +176,66 @@ export function getVodStreamUrl({ server, username, password }, vodId, ext = 'mp
     password
   )}/${encodeURIComponent(vodId)}.${ext}`;
 }
+
+
+// ============================================================
+// المسلسلات (Series) — دوال مكتفية ذاتيًا
+// ============================================================
+function seriesBaseUrl(credentials) {
+  let url = String(credentials.server || '').trim().replace(/\/+$/, '');
+
+  if (!/^https?:\/\//i.test(url)) {
+    url = 'https://' + url;
+  }
+
+  return url;
+}
+
+async function seriesRequest(credentials, action, extra = '') {
+  const base = seriesBaseUrl(credentials);
+  const user = encodeURIComponent(credentials.username);
+  const pass = encodeURIComponent(credentials.password);
+
+  const url =
+    base +
+    '/player_api.php?username=' + user +
+    '&password=' + pass +
+    '&action=' + action +
+    extra;
+
+  const res = await fetch(url);
+
+  if (!res.ok) {
+    throw new Error('HTTP ' + res.status);
+  }
+
+  return res.json();
+}
+
+export function getSeriesCategories(credentials) {
+  return seriesRequest(credentials, 'get_series_categories');
+}
+
+export function getSeries(credentials, categoryId) {
+  return seriesRequest(
+    credentials,
+    'get_series',
+    '&category_id=' + encodeURIComponent(categoryId)
+  );
+}
+
+export function getSeriesInfo(credentials, seriesId) {
+  return seriesRequest(
+    credentials,
+    'get_series_info',
+    '&series_id=' + encodeURIComponent(seriesId)
+  );
+}
+
+export function getSeriesEpisodeUrl(credentials, episodeId, ext) {
+  const base = seriesBaseUrl(credentials);
+  const user = encodeURIComponent(credentials.username);
+  const pass = encodeURIComponent(credentials.password);
+
+  return base + '/series/' + user + '/' + pass + '/' + episodeId + '.' + (ext || 'mp4');
+}

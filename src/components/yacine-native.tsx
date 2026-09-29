@@ -45,6 +45,10 @@ import {
   getVodStreamUrl,
   getShortEpg,
   decodeBase64Text,
+  getSeriesCategories,
+  getSeries,
+  getSeriesInfo,
+  getSeriesEpisodeUrl,
 } from '../../api/xtream';
 
 interface YacineNativeProps {
@@ -69,7 +73,22 @@ type Channel = {
   container_extension?: string;
 };
 
-type Screen = 'login' | 'dashboard' | 'categories' | 'channels' | 'movies-categories' | 'movies-list';
+type SeriesItem = {
+  series_id: string | number;
+  name: string;
+  cover?: string;
+};
+
+type Screen =
+  | 'login'
+  | 'dashboard'
+  | 'categories'
+  | 'channels'
+  | 'movies-categories'
+  | 'movies-list'
+  | 'series-categories'
+  | 'series-list'
+  | 'series-detail';
 
 const FAVORITES_STORAGE_KEY = 'rabah_iptv_favorites';
 const LAST_WATCHED_STORAGE_KEY = 'rabah_iptv_last_watched';
@@ -293,7 +312,7 @@ const currentBrightness = useRef(0.5);
         const isCleartextError = /CLEARTEXT/i.test(raw);
 
         const message = isCleartextError
-          ? 'الاتصال غير المشفّر (http) ممنوع على هذا الجهاز. يجب تفعيل usesCleartextTraffic وإعادة بناء التطبيق.'
+          ? 'تعذر الاتصال بالسيرفر (حظر شبكي). جرّب قناة أخرى أو تحقق من الاشتراك.'
           : raw || 'تعذر تشغيل البث';
 
         if (
@@ -1120,6 +1139,315 @@ function DashboardHeader({ onLogout }: { onLogout: () => void }) {
 // ============================================================
 // المكوّن الرئيسي
 // ============================================================
+// ============================================================
+// لوحة دليل البرامج (العمود الأيمن)
+// ============================================================
+function EpgListPanel({
+  credentials,
+  streamId,
+}: {
+  credentials: Credentials;
+  streamId: string;
+}) {
+  const [items, setItems] = useState<
+    { title: string; start: number; end: number }[]
+  >([]);
+  const [busy, setBusy] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setBusy(true);
+
+    (async () => {
+      try {
+        const data = await getShortEpg(credentials, streamId, 12);
+        const list = (data?.epg_listings || []).map((l: any) => ({
+          title: decodeBase64Text(l.title),
+          start: Number(l.start_timestamp) * 1000,
+          end: Number(l.stop_timestamp) * 1000,
+        }));
+
+        if (!cancelled) setItems(list);
+      } catch {
+        if (!cancelled) setItems([]);
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [credentials, streamId]);
+
+  const fmt = (ms: number) =>
+    new Date(ms).toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+  if (busy) {
+    return (
+      <View style={styles.splitCenterBox}>
+        <ActivityIndicator color="#ff1e27" />
+      </View>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <View style={styles.splitCenterBox}>
+        <Text style={styles.splitEmptyText}>لا يوجد دليل برامج</Text>
+      </View>
+    );
+  }
+
+  const now = Date.now();
+
+  return (
+    <FlatList
+      data={items}
+      keyExtractor={(item, index) => String(item.start) + index}
+      renderItem={({ item }) => {
+        const live = now >= item.start && now < item.end;
+
+        return (
+          <View style={[styles.epgRow, live && styles.epgRowActive]}>
+            <Text style={[styles.epgRowTime, live && styles.epgRowLiveText]}>
+              {fmt(item.start)} - {fmt(item.end)}
+            </Text>
+            <Text
+              style={[styles.epgRowTitle, live && styles.epgRowLiveText]}
+              numberOfLines={2}
+            >
+              {item.title}
+            </Text>
+          </View>
+        );
+      }}
+    />
+  );
+}
+
+// ============================================================
+// معاينة الفيديو (العمود الأوسط)
+// ============================================================
+function PreviewPlayer({
+  url,
+  onExpand,
+}: {
+  url: string;
+  onExpand: () => void;
+}) {
+  useKeepAwake();
+
+  const player = useVideoPlayer(url, (pl) => {
+    pl.play();
+  });
+
+  const firstRun = useRef(true);
+
+  useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
+
+    try {
+      player.replace({ uri: url });
+      player.play();
+    } catch {
+      // تجاهل
+    }
+  }, [url]);
+
+  return (
+    <View style={styles.previewBox}>
+      <VideoView
+        player={player}
+        style={StyleSheet.absoluteFill}
+        contentFit="contain"
+        nativeControls={false}
+        pointerEvents="none"
+        surfaceType="textureView"
+      />
+
+      <TouchableOpacity
+        style={StyleSheet.absoluteFill}
+        activeOpacity={1}
+        onPress={onExpand}
+      />
+
+      <View style={styles.previewHint} pointerEvents="none">
+        <Text style={styles.previewHintText}>⛶ اضغط للتكبير</Text>
+      </View>
+    </View>
+  );
+}
+
+// ============================================================
+// التخطيط المقسوم: قائمة | معاينة | دليل البرامج
+// ============================================================
+function ChannelsSplitView({
+  title,
+  channels,
+  credentials,
+  onBack,
+  onPlay,
+  isFavorite,
+  onToggleFavorite,
+}: {
+  title: string;
+  channels: Channel[];
+  credentials: Credentials | null;
+  onBack: () => void;
+  onPlay: (channel: Channel) => void;
+  isFavorite: (channel: Channel) => boolean;
+  onToggleFavorite: (channel: Channel) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState<Channel | null>(
+    channels[0] ?? null
+  );
+
+  useEffect(() => {
+    setSelected(channels[0] ?? null);
+  }, [channels]);
+
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return channels;
+    return channels.filter((c) => (c.name || '').toLowerCase().includes(q));
+  }, [channels, query]);
+
+  const previewUrl =
+    selected && credentials
+      ? getStreamUrl(credentials, String(selected.stream_id), 'm3u8')
+      : '';
+
+  return (
+    <View
+      style={[
+        styles.splitRoot,
+        {
+          paddingTop: insets.top + 6,
+          paddingBottom: insets.bottom + 6,
+          paddingLeft: insets.left + 8,
+          paddingRight: insets.right + 8,
+        },
+      ]}
+    >
+      <View style={styles.splitTopBar}>
+        <TouchableOpacity onPress={onBack} style={styles.splitBackButton}>
+          <Text style={styles.splitBackText}>←</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.splitTitle} numberOfLines={1}>
+          {title}
+        </Text>
+
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="🔍 بحث..."
+          placeholderTextColor="#7f8da3"
+          style={styles.splitSearch}
+        />
+
+        <HeaderClock />
+      </View>
+
+      <View style={styles.splitBody}>
+        <View style={styles.splitLeft}>
+          <FlatList
+            data={filtered}
+            keyExtractor={(item, index) => String(item.stream_id ?? index)}
+            initialNumToRender={14}
+            maxToRenderPerBatch={10}
+            windowSize={7}
+            removeClippedSubviews={Platform.OS === 'android'}
+            ListEmptyComponent={
+              <Text style={styles.splitEmptyText}>لا توجد نتائج</Text>
+            }
+            renderItem={({ item }) => {
+              const active =
+                selected != null &&
+                String(selected.stream_id) === String(item.stream_id);
+
+              return (
+                <TouchableOpacity
+                  style={[styles.splitRow, active && styles.splitRowActive]}
+                  onPress={() => setSelected(item)}
+                >
+                  <TouchableOpacity
+                    onPress={() => onToggleFavorite(item)}
+                    style={styles.splitStar}
+                  >
+                    <Text style={styles.splitStarText}>
+                      {isFavorite(item) ? '⭐' : '☆'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <Text style={styles.splitRowNum} numberOfLines={1}>
+                    {item.stream_id}
+                  </Text>
+
+                  {item.stream_icon ? (
+                    <Image
+                      source={{ uri: item.stream_icon }}
+                      style={styles.splitRowLogo}
+                    />
+                  ) : (
+                    <View style={styles.splitRowLogo} />
+                  )}
+
+                  <Text style={styles.splitRowName} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+
+                  <TouchableOpacity
+                    onPress={() => onPlay(item)}
+                    style={styles.splitPlay}
+                  >
+                    <Text style={styles.splitPlayText}>▶</Text>
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        </View>
+
+        <View style={styles.splitCenter}>
+          {previewUrl ? (
+            <PreviewPlayer
+              url={previewUrl}
+              onExpand={() => selected && onPlay(selected)}
+            />
+          ) : (
+            <View style={styles.previewBox} />
+          )}
+
+          <Text style={styles.splitNowTitle} numberOfLines={1}>
+            {selected?.name || '—'}
+          </Text>
+        </View>
+
+        <View style={styles.splitRight}>
+          <Text style={styles.splitRightTitle}>📖 دليل البرامج</Text>
+
+          {selected && credentials ? (
+            <EpgListPanel
+              credentials={credentials}
+              streamId={String(selected.stream_id)}
+            />
+          ) : null}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function YacineNative({ onClose }: YacineNativeProps) {
   const [screen, setScreen] = useState<Screen>('login');
   const [credentials, setCredentials] = useState<Credentials | null>(null);
@@ -1143,12 +1471,26 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     url: string;
     name: string;
     index: number;
-    source: 'live' | 'movie';
+    source: 'live' | 'movie' | 'series';
     streamId: string;
   } | null>(null);
   const [playerMinimized, setPlayerMinimized] = useState(false);
 
+  const [seriesCategories, setSeriesCategories] = useState<CategoryItem[]>([]);
+  const [seriesList, setSeriesList] = useState<SeriesItem[]>([]);
+  const [seriesSearch, setSeriesSearch] = useState('');
+  const [seriesTitle, setSeriesTitle] = useState('');
+  const [seasons, setSeasons] = useState<string[]>([]);
+  const [episodesBySeason, setEpisodesBySeason] = useState<
+    Record<string, Channel[]>
+  >({});
+  const [selectedSeason, setSelectedSeason] = useState('');
+  const [episodes, setEpisodes] = useState<Channel[]>([]);
+
   const [loading, setLoading] = useState(false);
+
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
+  const isLandscape = winWidth > winHeight;
 
   useEffect(() => {
     ScreenOrientation.unlockAsync().catch(() => {});
@@ -1415,25 +1757,145 @@ return () => {
     setPlayerMinimized(false);
   }
 
+  async function openSeriesCategories() {
+    if (!credentials) return;
+
+    try {
+      setLoading(true);
+      const data = await getSeriesCategories(credentials);
+      setSeriesCategories(Array.isArray(data) ? data : []);
+      setScreen('series-categories');
+    } catch (error: any) {
+      Alert.alert('خطأ', error?.message || 'تعذر جلب فئات المسلسلات');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function openSeriesCategory(category: CategoryItem) {
+    if (!credentials) return;
+
+    try {
+      setLoading(true);
+      const data = await getSeries(credentials, String(category.category_id));
+      setSeriesList(Array.isArray(data) ? data : []);
+      setSeriesSearch('');
+      setScreen('series-list');
+    } catch (error: any) {
+      Alert.alert('خطأ', error?.message || 'تعذر جلب المسلسلات');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function openSeriesDetail(item: SeriesItem) {
+    if (!credentials) return;
+
+    try {
+      setLoading(true);
+      const data = await getSeriesInfo(credentials, String(item.series_id));
+      const rawAny = data?.episodes;
+
+      // بعض السيرفرات ترجع مصفوفة بدل كائن مواسم
+      const raw: Record<string, any[]> = Array.isArray(rawAny)
+        ? { '1': rawAny }
+        : rawAny && typeof rawAny === 'object'
+        ? rawAny
+        : {};
+
+      const keys = Object.keys(raw).sort((a, b) => Number(a) - Number(b));
+      const map: Record<string, Channel[]> = {};
+
+      keys.forEach((key) => {
+        map[key] = (raw[key] || []).map((ep: any) => ({
+          stream_id: ep.id,
+          name: `E${ep.episode_num} · ${ep.title || ''}`.trim(),
+          stream_icon: ep.info?.movie_image,
+          container_extension: ep.container_extension,
+        }));
+      });
+
+      const first = keys[0] || '';
+
+      setSeasons(keys);
+      setEpisodesBySeason(map);
+      setSelectedSeason(first);
+      setEpisodes(map[first] || []);
+      setSeriesTitle(item.name || 'مسلسل');
+      setScreen('series-detail');
+    } catch (error: any) {
+      Alert.alert('خطأ', error?.message || 'تعذر جلب حلقات المسلسل');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function selectSeason(key: string) {
+    setSelectedSeason(key);
+    setEpisodes(episodesBySeason[key] || []);
+  }
+
+  function playEpisodeAtIndex(index: number) {
+    if (!credentials) return;
+
+    const ep = episodes[index];
+    if (!ep) return;
+
+    const url = getSeriesEpisodeUrl(
+      credentials,
+      ep.stream_id,
+      ep.container_extension || 'mp4'
+    );
+
+    setActiveChannel({
+      url,
+      name: ep.name || 'حلقة',
+      index,
+      source: 'series',
+      streamId: String(ep.stream_id),
+    });
+  }
+
+  function openEpisode(ep: Channel) {
+    const index = episodes.findIndex(
+      (e) => String(e.stream_id) === String(ep.stream_id)
+    );
+
+    playEpisodeAtIndex(index >= 0 ? index : 0);
+    setPlayerMinimized(false);
+  }
+
+  function playAtIndex(index: number, source: 'live' | 'movie' | 'series') {
+    if (source === 'movie') {
+      playMovieAtIndex(index);
+    } else if (source === 'series') {
+      playEpisodeAtIndex(index);
+    } else {
+      playChannelAtIndex(index);
+    }
+  }
+
+  function currentPlaylist(source: 'live' | 'movie' | 'series') {
+    if (source === 'movie') return movies;
+    if (source === 'series') return episodes;
+    return channels;
+  }
+
   function goToNextChannel() {
     if (!activeChannel) return;
-    if (activeChannel.source === 'movie') {
-      if (activeChannel.index < movies.length - 1) {
-        playMovieAtIndex(activeChannel.index + 1);
-      }
-    } else if (activeChannel.index < channels.length - 1) {
-      playChannelAtIndex(activeChannel.index + 1);
+
+    const list = currentPlaylist(activeChannel.source);
+
+    if (activeChannel.index >= 0 && activeChannel.index < list.length - 1) {
+      playAtIndex(activeChannel.index + 1, activeChannel.source);
     }
   }
 
   function goToPreviousChannel() {
     if (!activeChannel) return;
+
     if (activeChannel.index > 0) {
-      if (activeChannel.source === 'movie') {
-        playMovieAtIndex(activeChannel.index - 1);
-      } else {
-        playChannelAtIndex(activeChannel.index - 1);
-      }
+      playAtIndex(activeChannel.index - 1, activeChannel.source);
     }
   }
 
@@ -1461,7 +1923,22 @@ return () => {
       setScreen('categories');
       return;
     }
-    if (screen === 'movies-list') {
+      if (screen === 'series-detail') {
+        setScreen('series-list');
+        return;
+      }
+
+      if (screen === 'series-list') {
+        setScreen('series-categories');
+        return;
+      }
+
+      if (screen === 'series-categories') {
+        setScreen('dashboard');
+        return;
+      }
+
+      if (screen === 'movies-list') {
       setScreen('movies-categories');
       return;
     }
@@ -1500,7 +1977,7 @@ return () => {
     const sub = BackHandler.addEventListener(
       'hardwareBackPress',
       () => {
-        hardwareBackRef.current();
+        hardwareBackRef.current?.();
         return true;
       }
     );
@@ -1588,7 +2065,7 @@ return () => {
       animationType="slide"
       transparent={false}
       visible
-      onRequestClose={() => hardwareBackRef.current()}
+      onRequestClose={() => hardwareBackRef.current?.()}
     >
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         <GestureHandlerRootView style={{ flex: 1 }}>
@@ -1602,9 +2079,9 @@ return () => {
             backRef={playerBackRef}
             onClose={closePlayer}
             hasNext={
-              activeChannel!.source === 'movie'
-                ? activeChannel!.index < movies.length - 1
-                : activeChannel!.index < channels.length - 1
+              activeChannel!.index >= 0 &&
+              activeChannel!.index <
+                currentPlaylist(activeChannel!.source).length - 1
             }
             hasPrevious={activeChannel!.index > 0}
             onNext={goToNextChannel}
@@ -1613,15 +2090,9 @@ return () => {
             epgStreamId={
               activeChannel!.source === 'live' ? activeChannel!.streamId : ''
             }
-            playlist={activeChannel!.source === 'movie' ? movies : channels}
+            playlist={currentPlaylist(activeChannel!.source)}
             currentIndex={activeChannel!.index}
-            onSelectIndex={(i) => {
-              if (activeChannel!.source === 'movie') {
-                playMovieAtIndex(i);
-              } else {
-                playChannelAtIndex(i);
-              }
-            }}
+            onSelectIndex={(i) => playAtIndex(i, activeChannel!.source)}
           />
         </View>
       ) : (
@@ -1716,7 +2187,7 @@ return () => {
 
                   <TouchableOpacity
                     style={[styles.dashboardCardSmall, { backgroundColor: '#6c3fa8' }]}
-                    onPress={() => Alert.alert('قريبًا 🔜', 'قسم المسلسلات قيد التطوير')}
+                    onPress={openSeriesCategories}
                   >
                     <Text style={styles.dashboardCardIcon}>🎞️</Text>
                     <Text style={styles.dashboardCardTitle}>مسلسلات</Text>
@@ -1900,7 +2371,198 @@ return () => {
             </View>
           )}
 
-          {screen === 'channels' && (
+          {screen === 'series-categories' && (
+            <View style={styles.flex}>
+              {renderHeader('🎞️ فئات المسلسلات')}
+
+              {loading ? (
+                <View style={styles.center}>
+                  <ActivityIndicator size="large" color="#ff1e27" />
+                  <Text style={styles.loadingText}>جارٍ التحميل...</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={seriesCategories}
+                  keyExtractor={(item, index) =>
+                    String(item.category_id ?? index)
+                  }
+                  contentContainerStyle={styles.list}
+                  removeClippedSubviews={Platform.OS === 'android'}
+                  initialNumToRender={15}
+                  ListEmptyComponent={
+                    <Text style={styles.emptyText}>لا توجد فئات مسلسلات</Text>
+                  }
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.listItem}
+                      onPress={() => openSeriesCategory(item)}
+                    >
+                      <Text style={styles.itemIcon}>📂</Text>
+                      <Text style={styles.itemText}>{item.category_name}</Text>
+                      <Text style={styles.arrow}>‹</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              )}
+            </View>
+          )}
+
+          {screen === 'series-list' && (
+            <View style={styles.flex}>
+              {renderHeader('🎞️ المسلسلات')}
+
+              <View style={styles.searchBox}>
+                <Text style={styles.searchIcon}>🔍</Text>
+                <TextInput
+                  value={seriesSearch}
+                  onChangeText={setSeriesSearch}
+                  placeholder="ابحث عن مسلسل..."
+                  placeholderTextColor="#7f8da3"
+                  style={styles.searchInput}
+                />
+              </View>
+
+              {loading ? (
+                <View style={styles.center}>
+                  <ActivityIndicator size="large" color="#ff1e27" />
+                  <Text style={styles.loadingText}>جارٍ التحميل...</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={seriesList.filter((item) =>
+                    (item.name || '')
+                      .toLowerCase()
+                      .includes(seriesSearch.trim().toLowerCase())
+                  )}
+                  keyExtractor={(item, index) =>
+                    String(item.series_id ?? index)
+                  }
+                  contentContainerStyle={styles.list}
+                  removeClippedSubviews={Platform.OS === 'android'}
+                  initialNumToRender={12}
+                  ListEmptyComponent={
+                    <Text style={styles.emptyText}>لا توجد نتائج</Text>
+                  }
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.listItem}
+                      onPress={() => openSeriesDetail(item)}
+                    >
+                      {item.cover ? (
+                        <Image
+                          source={{ uri: item.cover }}
+                          style={styles.channelLogo}
+                        />
+                      ) : (
+                        <Text style={styles.itemIcon}>🎞️</Text>
+                      )}
+
+                      <Text style={styles.itemText} numberOfLines={2}>
+                        {item.name}
+                      </Text>
+
+                      <Text style={styles.arrow}>‹</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              )}
+            </View>
+          )}
+
+          {screen === 'series-detail' && (
+            <View style={styles.flex}>
+              {renderHeader(seriesTitle || '🎞️ المسلسل')}
+
+              {seasons.length > 0 && (
+                <View style={styles.seasonBar}>
+                  <FlatList
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    data={seasons}
+                    keyExtractor={(key) => key}
+                    contentContainerStyle={{ paddingHorizontal: 12 }}
+                    renderItem={({ item }) => {
+                      const active = item === selectedSeason;
+
+                      return (
+                        <TouchableOpacity
+                          style={[
+                            styles.seasonChip,
+                            active && styles.seasonChipActive,
+                          ]}
+                          onPress={() => selectSeason(item)}
+                        >
+                          <Text
+                            style={[
+                              styles.seasonChipText,
+                              active && styles.seasonChipTextActive,
+                            ]}
+                          >
+                            الموسم {item}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    }}
+                  />
+                </View>
+              )}
+
+              {loading ? (
+                <View style={styles.center}>
+                  <ActivityIndicator size="large" color="#ff1e27" />
+                  <Text style={styles.loadingText}>جارٍ التحميل...</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={episodes}
+                  keyExtractor={(item, index) =>
+                    String(item.stream_id ?? index)
+                  }
+                  contentContainerStyle={styles.list}
+                  removeClippedSubviews={Platform.OS === 'android'}
+                  initialNumToRender={12}
+                  ListEmptyComponent={
+                    <Text style={styles.emptyText}>لا توجد حلقات</Text>
+                  }
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.listItem}
+                      onPress={() => openEpisode(item)}
+                    >
+                      {item.stream_icon ? (
+                        <Image
+                          source={{ uri: item.stream_icon }}
+                          style={styles.channelLogo}
+                        />
+                      ) : (
+                        <Text style={styles.itemIcon}>▶</Text>
+                      )}
+
+                      <Text style={styles.itemText} numberOfLines={2}>
+                        {item.name}
+                      </Text>
+
+                      <Text style={styles.playIcon}>▶</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              )}
+            </View>
+          )}
+
+          {screen === 'channels' && isLandscape && (
+            <ChannelsSplitView
+              title={selectedCategory || 'القنوات'}
+              channels={channels}
+              credentials={credentials}
+              onBack={goBack}
+              onPlay={openChannel}
+              isFavorite={isFavorite}
+              onToggleFavorite={toggleFavorite}
+            />
+            )}
+
+            {screen === 'channels' && !isLandscape && (
             <View style={styles.flex}>
               {renderHeader(selectedCategory || ' 📺 القنوات')}
 
@@ -2619,4 +3281,173 @@ const styles = StyleSheet.create({
   drawerTextActive: { color: '#fff', fontWeight: 'bold' },
 
   drawerPlaying: { color: '#ff1e27', fontSize: 13, paddingHorizontal: 6 },
+
+  splitRoot: { flex: 1, backgroundColor: '#0b1220' },
+
+  splitTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: 8,
+  },
+
+  splitBackButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#26344d',
+  },
+
+  splitBackText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+
+  splitTitle: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: 'bold',
+    marginHorizontal: 12,
+    maxWidth: 220,
+  },
+
+  splitSearch: {
+    flex: 1,
+    height: 36,
+    backgroundColor: '#161f30',
+    borderWidth: 1,
+    borderColor: '#2b3850',
+    borderRadius: 8,
+    color: '#fff',
+    fontSize: 13,
+    paddingHorizontal: 12,
+    marginHorizontal: 10,
+  },
+
+  splitBody: { flex: 1, flexDirection: 'row' },
+
+  splitLeft: {
+    width: '34%',
+    backgroundColor: '#111a2b',
+    borderRadius: 12,
+    padding: 6,
+  },
+
+  splitCenter: { flex: 1, paddingHorizontal: 10 },
+
+  splitRight: {
+    width: '27%',
+    backgroundColor: '#111a2b',
+    borderRadius: 12,
+    padding: 8,
+  },
+
+  splitCenterBox: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  splitEmptyText: {
+    color: '#7f8da3',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 20,
+  },
+
+  splitRow: {
+    height: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    marginBottom: 2,
+  },
+
+  splitRowActive: { backgroundColor: '#1f6f8b' },
+
+  splitStar: { paddingHorizontal: 4 },
+  splitStarText: { fontSize: 15 },
+
+  splitRowNum: {
+    color: '#7f8da3',
+    fontSize: 10,
+    width: 46,
+  },
+
+  splitRowLogo: {
+    width: 30,
+    height: 30,
+    borderRadius: 5,
+    backgroundColor: '#26344d',
+    marginHorizontal: 6,
+  },
+
+  splitRowName: { flex: 1, color: '#e6ecf5', fontSize: 13 },
+
+  splitPlay: { paddingHorizontal: 8 },
+  splitPlayText: { color: '#ff1e27', fontSize: 14 },
+
+  previewBox: {
+    flex: 1,
+    backgroundColor: '#000',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+
+  previewHint: {
+    position: 'absolute',
+    right: 8,
+    bottom: 8,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+
+  previewHintText: { color: '#fff', fontSize: 11 },
+
+  splitNowTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+
+  splitRightTitle: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+
+  epgRow: {
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+
+  epgRowActive: { backgroundColor: 'rgba(31,111,139,0.35)' },
+
+  epgRowTime: { color: '#5fb3d4', fontSize: 11, fontWeight: 'bold' },
+
+  epgRowTitle: { color: '#c7d3e3', fontSize: 12, marginTop: 2 },
+
+  epgRowLiveText: { color: '#fff' },
+
+  seasonBar: { paddingVertical: 10 },
+
+  seasonChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 20,
+    backgroundColor: '#1b2639',
+    borderWidth: 1,
+    borderColor: '#2b3850',
+    marginEnd: 8,
+  },
+
+  seasonChipActive: { backgroundColor: '#6c3fa8', borderColor: '#8a5fd0' },
+
+  seasonChipText: { color: '#9aa8bd', fontSize: 13, fontWeight: '600' },
+
+  seasonChipTextActive: { color: '#fff' },
 });
