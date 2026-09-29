@@ -238,20 +238,26 @@ const currentBrightness = useRef(0.5);
       }
 
       if (event.status === 'error') {
-        const message = event.error?.message || 'تعذر تشغيل البث';
+        const raw = event.error?.message || '';
+        const isCleartextError = /CLEARTEXT/i.test(raw);
+
+        const message = isCleartextError
+          ? 'الاتصال غير المشفّر (http) ممنوع على هذا الجهاز. يجب تفعيل usesCleartextTraffic وإعادة بناء التطبيق.'
+          : raw || 'تعذر تشغيل البث';
 
         if (
+          !isCleartextError &&
           !streamRetried.current &&
-          /\.m3u8(?:\?.*)?$/i.test(streamUrl)
+          /\.m3u8(?=\?|$)/i.test(streamUrl)
         ) {
           streamRetried.current = true;
           setVideoStatus('loading');
           setVideoError('تعذر تشغيل البث، جارٍ تجربة صيغة بديلة...');
 
           const fallbackUrl = streamUrl.replace(
-              /\.m3u8(\?.*)?$/i,
-              '.ts$1'
-            );
+            /\.m3u8(\?.*)?$/i,
+            '.ts$1'
+          );
 
           player.replace({ uri: fallbackUrl });
           player.play();
