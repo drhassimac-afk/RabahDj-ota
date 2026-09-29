@@ -1,6 +1,6 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image,
   ActivityIndicator,
@@ -18,6 +18,8 @@ import { Image,
   TextInput,
   TouchableOpacity,
   View,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -582,64 +584,94 @@ function MiniPlayer({
 }) {
   const { width, height } = useWindowDimensions();
   useKeepAwake();
+
   const player = useVideoPlayer(streamUrl, (p) => {
     p.play();
   });
 
-  const [pos, setPos] = useState({ x: -16, y: -24 });
-  const dragStart = useRef({ x: 0, y: 0 });
+  const pan = useRef(new Animated.ValueXY({ x: -16, y: -24 })).current;
+  const current = useRef({ x: -16, y: -24 });
+  const start = useRef({ x: -16, y: -24 });
+  const screen = useRef({ width, height });
+  const onExpandRef = useRef(onExpand);
 
-  const panGesture = Gesture.Pan()
-    .runOnJS(true)
-    .onBegin(() => {
-      dragStart.current = { x: pos.x, y: pos.y };
+  useEffect(() => {
+    screen.current = { width, height };
+  }, [width, height]);
+
+  useEffect(() => {
+    onExpandRef.current = onExpand;
+  }, [onExpand]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+
+      onPanResponderGrant: () => {
+        start.current = { ...current.current };
+      },
+
+      onPanResponderMove: (_evt, g) => {
+        const { width: w, height: h } = screen.current;
+
+        const x = Math.max(
+          -(w - 180),
+          Math.min(4, start.current.x + g.dx)
+        );
+
+        const y = Math.max(
+          -(h - 180),
+          Math.min(24, start.current.y + g.dy)
+        );
+
+        current.current = { x, y };
+        pan.setValue({ x, y });
+      },
+
+      onPanResponderRelease: (_evt, g) => {
+        // لمسة قصيرة بدون سحب = تكبير المشغل
+        if (Math.abs(g.dx) < 6 && Math.abs(g.dy) < 6) {
+          onExpandRef.current();
+        }
+      },
     })
-    .onUpdate((e) => {
-      let nx = dragStart.current.x + e.translationX;
-      let ny = dragStart.current.y + e.translationY;
-      // حدود داخل الشاشة مع هامش صغير
-      nx = Math.max(-(width - 170), Math.min(16, nx));
-      ny = Math.max(-(height - 120), Math.min(24, ny));
-      setPos({ x: nx, y: ny });
-    })
-    .minDistance(6);
-
-  const tapGesture = Gesture.Tap()
-    .runOnJS(true)
-    .onEnd(() => {
-    onExpand();
-  });
-
-  const composedGesture = Gesture.Exclusive(panGesture, tapGesture);
+  ).current;
 
   return (
-    <View
+    <Animated.View
       style={[
         styles.miniPlayerWrapper,
-        { transform: [{ translateX: pos.x }, { translateY: pos.y }] },
+        { transform: pan.getTranslateTransform() },
       ]}
     >
-      <GestureDetector gesture={composedGesture}>
-        <View style={styles.miniPlayerTouchable}>
+      <View
+        style={styles.miniPlayerTouchable}
+        {...panResponder.panHandlers}
+      >
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <VideoView
             player={player}
             style={styles.miniPlayerVideo}
             contentFit="cover"
             nativeControls={false}
-            pointerEvents="none"
             surfaceType="textureView"
           />
-
-          <Text style={styles.miniPlayerLabel} numberOfLines={1}>
-            {channelName}
-          </Text>
         </View>
-      </GestureDetector>
 
-      <TouchableOpacity style={styles.miniPlayerClose} onPress={onClose}>
+        <Text style={styles.miniPlayerLabel} numberOfLines={1}>
+          {channelName}
+        </Text>
+      </View>
+
+      <TouchableOpacity
+        style={styles.miniPlayerClose}
+        onPress={onClose}
+      >
         <Text style={styles.miniPlayerCloseText}>✕</Text>
       </TouchableOpacity>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -1075,6 +1107,8 @@ return () => {
       visible
       onRequestClose={goBack}
     >
+      <GestureHandlerRootView style={{ flex: 1 }}>
+
       {showExpandedPlayer ? (
         <View style={styles.container}>
           <PlayerView
@@ -1469,6 +1503,7 @@ return () => {
           )}
         </KeyboardAvoidingView>
       )}
+          </GestureHandlerRootView>
     </Modal>
   );
 }
