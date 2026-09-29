@@ -74,6 +74,8 @@ type Screen = 'login' | 'dashboard' | 'categories' | 'channels' | 'movies-catego
 const FAVORITES_STORAGE_KEY = 'rabah_iptv_favorites';
 const LAST_WATCHED_STORAGE_KEY = 'rabah_iptv_last_watched';
 
+const DRAWER_ITEM_HEIGHT = 58;
+
 const FIT_MODES = [
   { value: 'contain', label: 'احتواء' },
   { value: 'cover', label: 'ملء' },
@@ -162,6 +164,10 @@ function PlayerView({
   onPrevious,
   credentials,
   epgStreamId,
+  playlist,
+  currentIndex,
+  onSelectIndex,
+  backRef,
 }: {
   streamUrl: string;
   channelName: string;
@@ -173,6 +179,10 @@ function PlayerView({
   onPrevious: () => void;
   credentials?: Credentials | null;
   epgStreamId?: string;
+  playlist?: Channel[];
+  currentIndex?: number;
+  onSelectIndex?: (index: number) => void;
+  backRef?: { current: (() => void) | null };
 }) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -202,6 +212,13 @@ function PlayerView({
   };
 
   const cycleFit = () => setFitIndex((i) => (i + 1) % FIT_MODES.length);
+
+  const [showChannelList, setShowChannelList] = useState(false);
+
+  const items = playlist ?? [];
+  const activeIndex = typeof currentIndex === 'number' ? currentIndex : -1;
+  const safeScrollIndex =
+    activeIndex >= 0 && activeIndex < items.length ? activeIndex : 0;
 
 const [showControls, setShowControls] = useState(true);
 const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -357,6 +374,33 @@ const currentBrightness = useRef(0.5);
         ScreenOrientation.unlockAsync().catch(() => {});
       };
   }, []);
+  const backActionRef = useRef<() => void>(() => {});
+
+  backActionRef.current = () => {
+    if (lockedRef.current) {
+      showControlsTemporarily();
+      return;
+    }
+
+    if (fullscreenRef.current) {
+      void toggleFullscreen();
+      return;
+    }
+
+    void minimizePlayer();
+  };
+
+  useEffect(() => {
+    if (!backRef) return;
+
+    backRef.current = () => backActionRef.current();
+
+    return () => {
+      backRef.current = null;
+    };
+  }, [backRef]);
+
+
 
   const toggleFullscreen = async () => {
     const nextFullscreen = !fullscreenRef.current;
@@ -658,6 +702,98 @@ const minimizePlayer = async () => {
           </>
         )}
 
+        {showChannelList && (
+          <View style={styles.drawerOverlay}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFill}
+              activeOpacity={1}
+              onPress={() => setShowChannelList(false)}
+            />
+
+            <View
+              style={[
+                styles.channelDrawer,
+                {
+                  right: insets.right,
+                  paddingTop: insets.top + 12,
+                  paddingBottom: insets.bottom + 12,
+                },
+              ]}
+            >
+              <View style={styles.drawerHeader}>
+                <Text style={styles.drawerTitle}>
+                  القنوات ({items.length})
+                </Text>
+
+                <TouchableOpacity onPress={() => setShowChannelList(false)}>
+                  <Text style={styles.drawerCloseText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <FlatList
+                data={items}
+                keyExtractor={(item, index) => String(item.stream_id ?? index)}
+                initialScrollIndex={safeScrollIndex}
+                getItemLayout={(_data, index) => ({
+                  length: DRAWER_ITEM_HEIGHT,
+                  offset: DRAWER_ITEM_HEIGHT * index,
+                  index,
+                })}
+                initialNumToRender={14}
+                maxToRenderPerBatch={10}
+                windowSize={7}
+                renderItem={({ item, index }) => {
+                  const isActive = index === activeIndex;
+
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.drawerItem,
+                        isActive && styles.drawerItemActive,
+                      ]}
+                      onPress={() => {
+                        onSelectIndex?.(index);
+                        setShowChannelList(false);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.drawerNumber,
+                          isActive && styles.drawerTextActive,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {item.stream_id}
+                      </Text>
+
+                      {item.stream_icon ? (
+                        <Image
+                          source={{ uri: item.stream_icon }}
+                          style={styles.drawerLogo}
+                        />
+                      ) : (
+                        <View style={styles.drawerLogo} />
+                      )}
+
+                      <Text
+                        style={[
+                          styles.drawerName,
+                          isActive && styles.drawerTextActive,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {item.name}
+                      </Text>
+
+                      {isActive && <Text style={styles.drawerPlaying}>▶</Text>}
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            </View>
+          </View>
+        )}
+
         {showControls && !locked && credentials && epgStreamId ? (
           <PlayerEpgBar
             credentials={credentials}
@@ -674,6 +810,15 @@ const minimizePlayer = async () => {
               { bottom: 32 + insets.bottom },
             ]}
           >
+          {items.length > 0 && (
+            <TouchableOpacity
+              style={[styles.controlButton, styles.drawerToggle]}
+              onPress={() => setShowChannelList(true)}
+            >
+              <Text style={styles.controlButtonText}>☰</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             style={[styles.controlButton, !hasPrevious && styles.controlButtonDisabled]}
             onPress={onPrevious}
@@ -849,44 +994,56 @@ function PlayerEpgBar({
   const [items, setItems] = useState<
     { title: string; start: number; end: number }[]
   >([]);
-  const [, setTick] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 30000);
+    const id = setInterval(() => setNowMs(Date.now()), 30000);
     return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
 
-    (async () => {
+    const load = async () => {
       try {
-        const data = await getShortEpg(credentials, streamId, 2);
-        const list = (data?.epg_listings || []).map((l: any) => ({
-          title: decodeBase64Text(l.title),
-          start: Number(l.start_timestamp) * 1000,
-          end: Number(l.stop_timestamp) * 1000,
-        }));
+        const data = await getShortEpg(credentials, streamId, 4);
+        const list = (data?.epg_listings || [])
+          .map((l: any) => ({
+            title: decodeBase64Text(l.title),
+            start: Number(l.start_timestamp) * 1000,
+            end: Number(l.stop_timestamp ?? l.end_timestamp) * 1000,
+          }))
+          .filter(
+            (x: { title: string; start: number; end: number }) =>
+              x.title && Number.isFinite(x.start) && Number.isFinite(x.end)
+          )
+          .sort((a: { start: number }, b: { start: number }) => a.start - b.start);
 
         if (!cancelled) setItems(list);
       } catch {
         if (!cancelled) setItems([]);
       }
-    })();
+    };
+
+    setItems([]);
+    load();
+    const id = setInterval(load, 60000);
 
     return () => {
       cancelled = true;
+      clearInterval(id);
     };
   }, [streamId, credentials]);
 
-  if (items.length === 0) return null;
+  const current = items.find((x) => x.start <= nowMs && nowMs < x.end);
+  const next = items.find((x) => x.start > nowMs);
 
-  const current = items[0];
-  const next = items[1];
+  if (!current && !next) return null;
 
-  const span = current ? current.end - current.start : 0;
   const progress =
-    span > 0 ? Math.min(1, Math.max(0, (Date.now() - current.start) / span)) : 0;
+    current && current.end > current.start
+      ? Math.min(1, Math.max(0, (nowMs - current.start) / (current.end - current.start)))
+      : 0;
 
   return (
     <View style={[styles.epgBar, { bottom: bottomOffset }]} pointerEvents="none">
@@ -1315,14 +1472,41 @@ return () => {
     onClose();
   }
 
+  const lastBackAt = useRef(0);
+  const playerBackRef = useRef<(() => void) | null>(null);
+
+  function handleHardwareBack() {
+    const now = Date.now();
+
+    if (now - lastBackAt.current < 250) return;
+    lastBackAt.current = now;
+
+    if (activeChannel && !playerMinimized) {
+      if (playerBackRef.current) {
+        playerBackRef.current();
+      } else {
+        setPlayerMinimized(true);
+      }
+      return;
+    }
+
+    goBack();
+  }
+
+  const hardwareBackRef = useRef(handleHardwareBack);
+  hardwareBackRef.current = handleHardwareBack;
+
   useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      goBack();
-      return true;
-    });
+    const sub = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        hardwareBackRef.current();
+        return true;
+      }
+    );
 
     return () => sub.remove();
-    }, [screen, activeChannel]);
+  }, []);
 
 
   function closePlayer() {
@@ -1404,7 +1588,7 @@ return () => {
       animationType="slide"
       transparent={false}
       visible
-      onRequestClose={goBack}
+      onRequestClose={() => hardwareBackRef.current()}
     >
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         <GestureHandlerRootView style={{ flex: 1 }}>
@@ -1415,6 +1599,7 @@ return () => {
             streamUrl={activeChannel!.url}
             channelName={activeChannel!.name}
             onMinimize={() => setPlayerMinimized(true)}
+            backRef={playerBackRef}
             onClose={closePlayer}
             hasNext={
               activeChannel!.source === 'movie'
@@ -1428,6 +1613,15 @@ return () => {
             epgStreamId={
               activeChannel!.source === 'live' ? activeChannel!.streamId : ''
             }
+            playlist={activeChannel!.source === 'movie' ? movies : channels}
+            currentIndex={activeChannel!.index}
+            onSelectIndex={(i) => {
+              if (activeChannel!.source === 'movie') {
+                playMovieAtIndex(i);
+              } else {
+                playChannelAtIndex(i);
+              }
+            }}
           />
         </View>
       ) : (
@@ -2352,4 +2546,77 @@ const styles = StyleSheet.create({
   },
 
   progressFill: { height: 3, backgroundColor: '#ff1e27', borderRadius: 2 },
+
+  drawerToggle: { backgroundColor: 'rgba(255,255,255,0.18)' },
+
+  drawerOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    zIndex: 45,
+    elevation: 45,
+  },
+
+  channelDrawer: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 320,
+    maxWidth: '85%',
+    backgroundColor: 'rgba(11,18,32,0.97)',
+    borderLeftWidth: 1,
+    borderLeftColor: '#273247',
+    paddingHorizontal: 10,
+  },
+
+  drawerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 6,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#273247',
+    marginBottom: 6,
+  },
+
+  drawerTitle: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
+
+  drawerCloseText: {
+    color: '#fff',
+    fontSize: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+
+  drawerItem: {
+    height: DRAWER_ITEM_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    marginBottom: 2,
+  },
+
+  drawerItemActive: { backgroundColor: '#1f6f8b' },
+
+  drawerNumber: {
+    color: '#7f8da3',
+    fontSize: 11,
+    width: 52,
+    textAlign: 'left',
+  },
+
+  drawerLogo: {
+    width: 34,
+    height: 34,
+    borderRadius: 6,
+    backgroundColor: '#26344d',
+    marginHorizontal: 8,
+  },
+
+  drawerName: { flex: 1, color: '#e6ecf5', fontSize: 14 },
+
+  drawerTextActive: { color: '#fff', fontWeight: 'bold' },
+
+  drawerPlaying: { color: '#ff1e27', fontSize: 13, paddingHorizontal: 6 },
 });
