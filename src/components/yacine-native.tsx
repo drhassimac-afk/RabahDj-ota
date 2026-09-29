@@ -22,6 +22,11 @@ import { Image,
   PanResponder,
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import {
+  SafeAreaProvider,
+  initialWindowMetrics,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as NavBar from 'expo-navigation-bar';
 import * as Brightness from 'expo-brightness';
@@ -159,6 +164,7 @@ function PlayerView({
   onNext: () => void;
   onPrevious: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const dims = useRef({ width, height });
 
@@ -431,7 +437,7 @@ const minimizePlayer = async () => {
       {fullscreen && <StatusBar hidden />}
 
       {!fullscreen && (
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
           <TouchableOpacity onPress={minimizePlayer} style={styles.backButton}>
             <Text style={styles.backText}>تصغير ▾</Text>
           </TouchableOpacity>
@@ -521,7 +527,10 @@ const minimizePlayer = async () => {
 
         {fullscreen && showControls && (
           <TouchableOpacity
-            style={styles.miniBackInFullscreen}
+            style={[
+              styles.miniBackInFullscreen,
+              { left: 12 + insets.left },
+            ]}
             onPress={minimizePlayer}
           >
             <Text style={styles.fullscreenText}>▾ تصغير</Text>
@@ -530,7 +539,13 @@ const minimizePlayer = async () => {
 
         {showControls && (
           <TouchableOpacity
-            style={styles.fullscreenButton}
+            style={[
+              styles.fullscreenButton,
+              {
+                right: 12 + insets.right,
+                bottom: 108 + insets.bottom,
+              },
+            ]}
             onPress={toggleFullscreen}
           >
             <Text style={styles.fullscreenText}>
@@ -541,7 +556,12 @@ const minimizePlayer = async () => {
 
         {/* أزرار التحكم السفلية: سابق / تشغيل-إيقاف / تالي */}
         {showControls && (
-          <View style={styles.controlsBar}>
+          <View
+            style={[
+              styles.controlsBar,
+              { bottom: 32 + insets.bottom },
+            ]}
+          >
           <TouchableOpacity
             style={[styles.controlButton, !hasPrevious && styles.controlButtonDisabled]}
             onPress={onPrevious}
@@ -584,6 +604,7 @@ function MiniPlayer({
 }) {
   const { width, height } = useWindowDimensions();
   useKeepAwake();
+  const insets = useSafeAreaInsets();
 
   const player = useVideoPlayer(streamUrl, (p) => {
     p.play();
@@ -643,7 +664,10 @@ function MiniPlayer({
     <Animated.View
       style={[
         styles.miniPlayerWrapper,
-        { transform: pan.getTranslateTransform() },
+        {
+          bottom: 32 + insets.bottom,
+          transform: pan.getTranslateTransform(),
+        },
       ]}
     >
       <View
@@ -672,6 +696,55 @@ function MiniPlayer({
         <Text style={styles.miniPlayerCloseText}>✕</Text>
       </TouchableOpacity>
     </Animated.View>
+  );
+}
+
+// ============================================================
+// ترويسات تحترم المنطقة الآمنة
+// ============================================================
+function ScreenHeader({
+  title,
+  onBack,
+  onLogout,
+}: {
+  title: string;
+  onBack: () => void;
+  onLogout?: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+      <TouchableOpacity onPress={onBack} style={styles.backButton}>
+        <Text style={styles.backText}>رجوع</Text>
+      </TouchableOpacity>
+
+      <Text style={styles.headerTitle} numberOfLines={1}>
+        {title}
+      </Text>
+
+      {onLogout ? (
+        <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
+          <Text style={styles.logoutText}>خروج</Text>
+        </TouchableOpacity>
+      ) : (
+        <View style={{ width: 60 }} />
+      )}
+    </View>
+  );
+}
+
+function DashboardHeader({ onLogout }: { onLogout: () => void }) {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View style={[styles.dashboardHeader, { paddingTop: insets.top + 10 }]}>
+      <Text style={styles.dashboardBrand}>📺 RABAH TV</Text>
+
+      <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
+        <Text style={styles.logoutText}>خروج</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -1023,23 +1096,11 @@ return () => {
 
   function renderHeader(title: string) {
     return (
-      <View style={styles.header}>
-        <TouchableOpacity onPress={goBack} style={styles.backButton}>
-          <Text style={styles.backText}>رجوع</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {title}
-        </Text>
-
-        {screen === 'categories' ? (
-          <TouchableOpacity onPress={logout} style={styles.logoutButton}>
-            <Text style={styles.logoutText}>خروج</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.headerSpacer} />
-        )}
-      </View>
+      <ScreenHeader
+        title={title}
+        onBack={goBack}
+        onLogout={screen === 'categories' ? logout : undefined}
+      />
     );
   }
 
@@ -1107,7 +1168,8 @@ return () => {
       visible
       onRequestClose={goBack}
     >
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
 
       {showExpandedPlayer ? (
         <View style={styles.container}>
@@ -1184,12 +1246,7 @@ return () => {
 
           {screen === 'dashboard' && (
             <View style={styles.flex}>
-              <View style={styles.dashboardHeader}>
-                <Text style={styles.dashboardBrand}>📺 RABAH TV</Text>
-                <TouchableOpacity onPress={logout} style={styles.logoutButton}>
-                  <Text style={styles.logoutText}>خروج</Text>
-                </TouchableOpacity>
-              </View>
+              <DashboardHeader onLogout={logout} />
 
               <View style={styles.dashboardGrid}>
                 {lastWatched && (
@@ -1504,6 +1561,7 @@ return () => {
         </KeyboardAvoidingView>
       )}
           </GestureHandlerRootView>
+      </SafeAreaProvider>
     </Modal>
   );
 }
@@ -1631,7 +1689,7 @@ const styles = StyleSheet.create({
 
   searchClear: { color: '#9aa8bd', fontSize: 16, paddingHorizontal: 4 },
 
-  list: { padding: 12 },
+  list: { padding: 12, paddingBottom: 56 },
   favoritesRow: {
     minHeight: 56,
     backgroundColor: '#26344d',
