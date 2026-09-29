@@ -39,7 +39,8 @@
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ],
-      "package": "com.rabahdj.app"
+      "package": "com.rabahdj.app",
+      "usesCleartextTraffic": true
     },
     "web": {
       "output": "static",
@@ -69,7 +70,15 @@
           "enforceContrast": false
         }
       ],
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
