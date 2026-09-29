@@ -74,6 +74,12 @@ type Screen = 'login' | 'dashboard' | 'categories' | 'channels' | 'movies-catego
 const FAVORITES_STORAGE_KEY = 'rabah_iptv_favorites';
 const LAST_WATCHED_STORAGE_KEY = 'rabah_iptv_last_watched';
 
+const FIT_MODES = [
+  { value: 'contain', label: 'احتواء' },
+  { value: 'cover', label: 'ملء' },
+  { value: 'fill', label: 'تمديد' },
+] as const;
+
 // كاش عام لـ EPG لتجنب إرسال طلب متكرر لنفس القناة
 const epgCache = new Map<string, string | null>();
 
@@ -154,6 +160,8 @@ function PlayerView({
   hasPrevious,
   onNext,
   onPrevious,
+  credentials,
+  epgStreamId,
 }: {
   streamUrl: string;
   channelName: string;
@@ -163,6 +171,8 @@ function PlayerView({
   hasPrevious: boolean;
   onNext: () => void;
   onPrevious: () => void;
+  credentials?: Credentials | null;
+  epgStreamId?: string;
 }) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -176,6 +186,22 @@ function PlayerView({
   const [fullscreen, setFullscreen] = useState(false);
   const fullscreenRef = useRef(false);
   const [isPlaying, setIsPlaying] = useState(true);
+
+  const [locked, setLocked] = useState(false);
+  const lockedRef = useRef(false);
+  const [fitIndex, setFitIndex] = useState(0);
+  const [brightnessLevel, setBrightnessLevel] = useState(0.5);
+  const [volumeLevel, setVolumeLevel] = useState(0.5);
+
+  const contentFit = FIT_MODES[fitIndex].value;
+
+  const toggleLock = () => {
+    const next = !lockedRef.current;
+    lockedRef.current = next;
+    setLocked(next);
+  };
+
+  const cycleFit = () => setFitIndex((i) => (i + 1) % FIT_MODES.length);
 
 const [showControls, setShowControls] = useState(true);
 const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -303,6 +329,7 @@ const currentBrightness = useRef(0.5);
         }
 
         currentBrightness.current = b;
+        setBrightnessLevel(b);
       } catch {
         // تجاهل لو ما فيه صلاحية
       }
@@ -310,6 +337,7 @@ const currentBrightness = useRef(0.5);
         const v = await VolumeManager.getVolume();
         const volNum = typeof v === 'number' ? v : (v as any)?.volume ?? 0.5;
         currentVolume.current = volNum;
+        setVolumeLevel(volNum);
       } catch {
         // تجاهل
       }
@@ -378,9 +406,16 @@ const minimizePlayer = async () => {
   };
 
   const showIndicator = (type: 'brightness' | 'volume', value: number) => {
+    if (type === 'brightness') {
+      setBrightnessLevel(value);
+    } else {
+      setVolumeLevel(value);
+    }
+
     setIndicator({ type, value });
+
     if (hideIndicatorTimeout.current) clearTimeout(hideIndicatorTimeout.current);
-    hideIndicatorTimeout.current = setTimeout(() => setIndicator(null), 600);
+    hideIndicatorTimeout.current = setTimeout(() => setIndicator(null), 700);
   };
 
   // نصف الشاشة الأيسر: إضاءة — نصف الشاشة الأيمن: صوت
@@ -395,7 +430,7 @@ const minimizePlayer = async () => {
       volumeStart.current = currentVolume.current;
     })
     .onUpdate((e) => {
-      if (!fullscreenRef.current) return;
+      if (lockedRef.current || !fullscreenRef.current) return;
 
       const { width, height } = dims.current;
       const delta = -e.translationY / height;
@@ -419,6 +454,11 @@ const minimizePlayer = async () => {
   const tapGesture = Gesture.Tap()
     .runOnJS(true)
     .onEnd(() => {
+      if (lockedRef.current) {
+        showControlsTemporarily();
+        return;
+      }
+
       if (fullscreenRef.current) {
         if (showControls) {
           if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
@@ -464,7 +504,7 @@ const minimizePlayer = async () => {
         <VideoView
           player={player}
           style={styles.video}
-          contentFit="contain"
+          contentFit={contentFit}
           nativeControls={false}
           pointerEvents="none"
           surfaceType="textureView"
@@ -525,19 +565,49 @@ const minimizePlayer = async () => {
           </View>
         )}
 
-        {fullscreen && showControls && (
-          <TouchableOpacity
+        {fullscreen && showControls && !locked && (
+          <View
             style={[
-              styles.miniBackInFullscreen,
-              { left: 12 + insets.left },
+              styles.fsTopBar,
+              {
+                paddingTop: insets.top + 8,
+                paddingLeft: 12 + insets.left,
+                paddingRight: 12 + insets.right,
+              },
             ]}
-            onPress={minimizePlayer}
           >
-            <Text style={styles.fullscreenText}>▾ تصغير</Text>
+            <TouchableOpacity style={styles.fsTopButton} onPress={minimizePlayer}>
+              <Text style={styles.fsTopButtonText}>▾</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.fsTitle} numberOfLines={1}>
+              {channelName}
+            </Text>
+
+            <HeaderClock />
+
+            <TouchableOpacity style={styles.fsTopButton} onPress={cycleFit}>
+              <Text style={styles.fsTopButtonText}>
+                {FIT_MODES[fitIndex].label}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.fsTopButton} onPress={toggleLock}>
+              <Text style={styles.fsTopButtonText}>🔓</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {fullscreen && locked && showControls && (
+          <TouchableOpacity
+            style={[styles.lockBadge, { top: insets.top + 12 }]}
+            onPress={toggleLock}
+          >
+            <Text style={styles.lockBadgeText}>🔒 اضغط لفتح القفل</Text>
           </TouchableOpacity>
         )}
 
-        {showControls && (
+        {showControls && !locked && (
           <TouchableOpacity
             style={[
               styles.fullscreenButton,
@@ -554,8 +624,50 @@ const minimizePlayer = async () => {
           </TouchableOpacity>
         )}
 
+        {fullscreen && showControls && !locked && (
+          <>
+            <View
+              style={[styles.sideSlider, { left: 20 + insets.left }]}
+              pointerEvents="none"
+            >
+              <Text style={styles.sideIcon}>☀️</Text>
+              <View style={styles.sliderTrack}>
+                <View
+                  style={[
+                    styles.sliderFill,
+                    { height: `${Math.round(brightnessLevel * 100)}%` },
+                  ]}
+                />
+              </View>
+            </View>
+
+            <View
+              style={[styles.sideSlider, { right: 20 + insets.right }]}
+              pointerEvents="none"
+            >
+              <Text style={styles.sideIcon}>🔊</Text>
+              <View style={styles.sliderTrack}>
+                <View
+                  style={[
+                    styles.sliderFill,
+                    { height: `${Math.round(volumeLevel * 100)}%` },
+                  ]}
+                />
+              </View>
+            </View>
+          </>
+        )}
+
+        {showControls && !locked && credentials && epgStreamId ? (
+          <PlayerEpgBar
+            credentials={credentials}
+            streamId={epgStreamId}
+            bottomOffset={92 + insets.bottom}
+          />
+        ) : null}
+
         {/* أزرار التحكم السفلية: سابق / تشغيل-إيقاف / تالي */}
-        {showControls && (
+        {showControls && !locked && (
           <View
             style={[
               styles.controlsBar,
@@ -702,6 +814,106 @@ function MiniPlayer({
 // ============================================================
 // ترويسات تحترم المنطقة الآمنة
 // ============================================================
+function HeaderClock() {
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <View style={styles.clockBox}>
+      <Text style={styles.clockTime}>
+        {now.toLocaleTimeString('fr-FR', {
+          hour: '2-digit',
+          minute: '2-digit',
+        })}
+      </Text>
+      <Text style={styles.clockDate}>
+        {now.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+      </Text>
+    </View>
+  );
+}
+
+function PlayerEpgBar({
+  credentials,
+  streamId,
+  bottomOffset,
+}: {
+  credentials: Credentials;
+  streamId: string;
+  bottomOffset: number;
+}) {
+  const [items, setItems] = useState<
+    { title: string; start: number; end: number }[]
+  >([]);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const data = await getShortEpg(credentials, streamId, 2);
+        const list = (data?.epg_listings || []).map((l: any) => ({
+          title: decodeBase64Text(l.title),
+          start: Number(l.start_timestamp) * 1000,
+          end: Number(l.stop_timestamp) * 1000,
+        }));
+
+        if (!cancelled) setItems(list);
+      } catch {
+        if (!cancelled) setItems([]);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [streamId, credentials]);
+
+  if (items.length === 0) return null;
+
+  const current = items[0];
+  const next = items[1];
+
+  const span = current ? current.end - current.start : 0;
+  const progress =
+    span > 0 ? Math.min(1, Math.max(0, (Date.now() - current.start) / span)) : 0;
+
+  return (
+    <View style={[styles.epgBar, { bottom: bottomOffset }]} pointerEvents="none">
+      {current && (
+        <Text style={styles.epgNow} numberOfLines={1}>
+          🔴 الآن: {current.title}
+        </Text>
+      )}
+
+      <View style={styles.progressTrack}>
+        <View
+          style={[
+            styles.progressFill,
+            { width: `${Math.round(progress * 100)}%` },
+          ]}
+        />
+      </View>
+
+      {next && (
+        <Text style={styles.epgNext} numberOfLines={1}>
+          ⏭ التالي: {next.title}
+        </Text>
+      )}
+    </View>
+  );
+}
+
 function ScreenHeader({
   title,
   onBack,
@@ -775,6 +987,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     name: string;
     index: number;
     source: 'live' | 'movie';
+    streamId: string;
   } | null>(null);
   const [playerMinimized, setPlayerMinimized] = useState(false);
 
@@ -858,6 +1071,7 @@ return () => {
       name: lastWatched.name || 'قناة',
       index: index >= 0 ? index : -1,
       source: 'live',
+      streamId: String(lastWatched.stream_id),
     });
 
     setPlayerMinimized(false);
@@ -949,7 +1163,13 @@ return () => {
     if (!channel) return;
 
     const url = getStreamUrl(credentials, String(channel.stream_id), 'm3u8');
-    setActiveChannel({ url, name: channel.name || 'قناة', index, source: 'live' });
+    setActiveChannel({
+      url,
+      name: channel.name || 'قناة',
+      index,
+      source: 'live',
+      streamId: String(channel.stream_id),
+    });
 
     setLastWatched(channel);
     AsyncStorage.setItem(
@@ -967,7 +1187,13 @@ return () => {
     // تجنب إعادة تشغيل نفس القناة إذا كانت مفتوحة بالفعل
     if (activeChannel?.url === url && !playerMinimized) return;
 
-    setActiveChannel({ url, name: channel.name || 'قناة', index, source: 'live' });
+    setActiveChannel({
+      url,
+      name: channel.name || 'قناة',
+      index,
+      source: 'live',
+      streamId: String(channel.stream_id),
+    });
     setPlayerMinimized(false);
 
     setLastWatched(channel);
@@ -1009,14 +1235,26 @@ return () => {
     if (!movie) return;
 
     const url = getVodStreamUrl(credentials, movie.stream_id, movie.container_extension || 'mp4');
-    setActiveChannel({ url, name: movie.name || 'فيلم', index, source: 'movie' });
+    setActiveChannel({
+      url,
+      name: movie.name || 'فيلم',
+      index,
+      source: 'movie',
+      streamId: String(movie.stream_id),
+    });
   }
 
   function openMovie(movie: Channel) {
     if (!credentials) return;
     const index = movies.findIndex((m) => String(m.stream_id) === String(movie.stream_id));
     const url = getVodStreamUrl(credentials, movie.stream_id, movie.container_extension || 'mp4');
-    setActiveChannel({ url, name: movie.name || 'فيلم', index, source: 'movie' });
+    setActiveChannel({
+      url,
+      name: movie.name || 'فيلم',
+      index,
+      source: 'movie',
+      streamId: String(movie.stream_id),
+    });
     setPlayerMinimized(false);
   }
 
@@ -1186,6 +1424,10 @@ return () => {
             hasPrevious={activeChannel!.index > 0}
             onNext={goToNextChannel}
             onPrevious={goToPreviousChannel}
+            credentials={credentials}
+            epgStreamId={
+              activeChannel!.source === 'live' ? activeChannel!.streamId : ''
+            }
           />
         </View>
       ) : (
@@ -2027,4 +2269,87 @@ const styles = StyleSheet.create({
   },
 
   miniPlayerCloseText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+
+  clockBox: { alignItems: 'center', marginHorizontal: 10 },
+  clockTime: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
+  clockDate: { color: '#b9c6da', fontSize: 10 },
+
+  fsTopBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    zIndex: 35,
+    elevation: 35,
+  },
+
+  fsTopButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginHorizontal: 4,
+  },
+
+  fsTopButtonText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+
+  fsTitle: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: 'bold',
+    marginHorizontal: 8,
+  },
+
+  lockBadge: {
+    position: 'absolute',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    zIndex: 40,
+    elevation: 40,
+  },
+
+  lockBadgeText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+
+  sideSlider: {
+    position: 'absolute',
+    top: '28%',
+    height: '44%',
+    alignItems: 'center',
+    zIndex: 25,
+  },
+
+  sideIcon: { fontSize: 18, marginBottom: 8 },
+
+  sliderTrack: {
+    flex: 1,
+    width: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+  },
+
+  sliderFill: { width: 6, backgroundColor: '#fff', borderRadius: 3 },
+
+  epgBar: { position: 'absolute', left: 18, right: 18, zIndex: 25 },
+
+  epgNow: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  epgNext: { color: '#b9c6da', fontSize: 12, marginTop: 6 },
+
+  progressTrack: {
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 2,
+    marginTop: 6,
+  },
+
+  progressFill: { height: 3, backgroundColor: '#ff1e27', borderRadius: 2 },
 });
