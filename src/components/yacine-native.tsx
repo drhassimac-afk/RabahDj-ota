@@ -93,7 +93,8 @@ type Screen =
   | 'movies-list'
   | 'series-categories'
   | 'series-list'
-  | 'series-detail';
+  | 'series-detail'
+  | 'multiscreen';
 
 const FAVORITES_STORAGE_KEY = 'rabah_iptv_favorites';
 const LAST_WATCHED_STORAGE_KEY = 'rabah_iptv_last_watched';
@@ -1531,6 +1532,316 @@ function ChannelsSplitView({
   );
 }
 
+// ============================================================
+// خلية واحدة في شبكة الشاشات المتعددة
+// ============================================================
+function MultiCell({
+  channel,
+  credentials,
+  muted,
+  focused,
+  onFocus,
+  onClear,
+  onPick,
+}: {
+  channel: Channel | null;
+  credentials: Credentials;
+  muted: boolean;
+  focused: boolean;
+  onFocus: () => void;
+  onClear: () => void;
+  onPick: () => void;
+}) {
+  const url = channel
+    ? getStreamUrl(credentials, String(channel.stream_id), 'm3u8')
+    : '';
+
+  const player = useVideoPlayer(url || null, (pl) => {
+    if (url) {
+      pl.muted = true;
+      pl.play();
+    }
+  });
+
+  const first = useRef(true);
+
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+
+    try {
+      if (url) {
+        player.replace({ uri: url });
+        player.play();
+      } else {
+        player.pause();
+      }
+    } catch {
+      // تجاهل
+    }
+  }, [url]);
+
+  useEffect(() => {
+    try {
+      player.muted = muted;
+    } catch {
+      // تجاهل
+    }
+  }, [muted, url]);
+
+  if (!channel) {
+    return (
+      <TouchableOpacity style={styles.multiEmpty} onPress={onPick}>
+        <Text style={styles.multiPlus}>＋</Text>
+        <Text style={styles.multiEmptyText}>اختر قناة</Text>
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <TouchableOpacity
+      style={[styles.multiCell, focused && styles.multiCellFocused]}
+      activeOpacity={0.9}
+      onPress={onFocus}
+    >
+      <VideoView
+        player={player}
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        nativeControls={false}
+        pointerEvents="none"
+        surfaceType="textureView"
+      />
+
+      <View style={styles.multiBar}>
+        <Text style={styles.multiName} numberOfLines={1}>
+          {muted ? '🔇' : '🔊'} {channel.name}
+        </Text>
+
+        <TouchableOpacity onPress={onClear} style={styles.multiClose}>
+          <Text style={styles.multiCloseText}>✕</Text>
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// ============================================================
+// شبكة 2×2 للقنوات المباشرة
+// ============================================================
+function MultiScreenView({
+  credentials,
+  channels,
+  categories,
+  onBack,
+  onLoadCategory,
+}: {
+  credentials: Credentials;
+  channels: Channel[];
+  categories: CategoryItem[];
+  onBack: () => void;
+  onLoadCategory: (c: CategoryItem) => Promise<Channel[]>;
+}) {
+  const insets = useSafeAreaInsets();
+
+  const [slots, setSlots] = useState<(Channel | null)[]>([
+    null,
+    null,
+    null,
+    null,
+  ]);
+  const [audioSlot, setAudioSlot] = useState(0);
+  const [picking, setPicking] = useState<number | null>(null);
+  const [pool, setPool] = useState<Channel[]>(channels);
+  const [query, setQuery] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (channels.length) setPool(channels);
+  }, [channels]);
+
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return pool;
+    return pool.filter((c) => (c.name || '').toLowerCase().includes(q));
+  }, [pool, query]);
+
+  const assign = (channel: Channel) => {
+    if (picking === null) return;
+
+    setSlots((prev) => {
+      const next = [...prev];
+      next[picking] = channel;
+      return next;
+    });
+
+    setPicking(null);
+    setQuery('');
+  };
+
+  const clearSlot = (i: number) =>
+    setSlots((prev) => {
+      const next = [...prev];
+      next[i] = null;
+      return next;
+    });
+
+  return (
+    <View style={[styles.flex, { paddingTop: insets.top }]}>
+      <View style={styles.multiHeader}>
+        <TouchableOpacity onPress={onBack} style={styles.backButton}>
+          <Text style={styles.backText}>رجوع</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          ▦ شاشات متعددة
+        </Text>
+
+        <TouchableOpacity
+          onPress={() => setSlots([null, null, null, null])}
+          style={styles.logoutButton}
+        >
+          <Text style={styles.logoutText}>تفريغ</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Text style={styles.multiHint}>
+        اضغط شاشة لتفعيل صوتها · الصوت الآن: شاشة {audioSlot + 1}
+      </Text>
+
+      <View style={styles.multiGrid}>
+        <View style={styles.multiRow}>
+          {[0, 1].map((i) => (
+            <MultiCell
+              key={i}
+              channel={slots[i]}
+              credentials={credentials}
+              muted={audioSlot !== i}
+              focused={audioSlot === i}
+              onFocus={() => setAudioSlot(i)}
+              onClear={() => clearSlot(i)}
+              onPick={() => setPicking(i)}
+            />
+          ))}
+        </View>
+
+        <View style={styles.multiRow}>
+          {[2, 3].map((i) => (
+            <MultiCell
+              key={i}
+              channel={slots[i]}
+              credentials={credentials}
+              muted={audioSlot !== i}
+              focused={audioSlot === i}
+              onFocus={() => setAudioSlot(i)}
+              onClear={() => clearSlot(i)}
+              onPick={() => setPicking(i)}
+            />
+          ))}
+        </View>
+      </View>
+
+      {picking !== null && (
+        <View style={styles.multiPickerOverlay}>
+          <View
+            style={[
+              styles.multiPicker,
+              { paddingBottom: insets.bottom + 10 },
+            ]}
+          >
+            <View style={styles.drawerHeader}>
+              <Text style={styles.drawerTitle}>
+                اختر قناة للشاشة {picking + 1}
+              </Text>
+
+              <TouchableOpacity onPress={() => setPicking(null)}>
+                <Text style={styles.drawerCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.searchBox}>
+              <Text style={styles.searchIcon}>🔍</Text>
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="ابحث..."
+                placeholderTextColor="#7f8da3"
+                style={styles.searchInput}
+              />
+            </View>
+
+            {categories.length > 0 && (
+              <FlatList
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                data={categories}
+                keyExtractor={(c, i) => String(c.category_id ?? i)}
+                style={{ maxHeight: 48 }}
+                contentContainerStyle={{ paddingHorizontal: 10 }}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.seasonChip}
+                    onPress={async () => {
+                      setBusy(true);
+                      try {
+                        const data = await onLoadCategory(item);
+                        setPool(data);
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    <Text style={styles.seasonChipText} numberOfLines={1}>
+                      {item.category_name}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+
+            {busy ? (
+              <View style={styles.center}>
+                <ActivityIndicator color="#ff1e27" />
+              </View>
+            ) : (
+              <FlatList
+                data={filtered}
+                keyExtractor={(c, i) => String(c.stream_id ?? i)}
+                initialNumToRender={12}
+                removeClippedSubviews={Platform.OS === 'android'}
+                ListEmptyComponent={
+                  <Text style={styles.emptyText}>لا توجد قنوات</Text>
+                }
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.drawerItem}
+                    onPress={() => assign(item)}
+                  >
+                    {item.stream_icon ? (
+                      <Image
+                        source={{ uri: item.stream_icon }}
+                        style={styles.drawerLogo}
+                      />
+                    ) : (
+                      <View style={styles.drawerLogo} />
+                    )}
+
+                    <Text style={styles.drawerName} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function YacineNative({ onClose }: YacineNativeProps) {
   const [screen, setScreen] = useState<Screen>('login');
   const [credentials, setCredentials] = useState<Credentials | null>(null);
@@ -2062,6 +2373,11 @@ return () => {
       setScreen('categories');
       return;
     }
+      if (screen === 'multiscreen') {
+        setScreen('dashboard');
+        return;
+      }
+
       if (screen === 'series-detail') {
         setScreen('series-list');
         return;
@@ -2350,7 +2666,7 @@ return () => {
 
                 <TouchableOpacity
                   style={styles.dashboardCardTiny}
-                  onPress={() => Alert.alert('قريبًا 🔜', 'ميزة الشاشات المتعددة قيد التطوير')}
+                  onPress={() => setScreen('multiscreen')}
                 >
                   <Text style={styles.dashboardCardTinyIcon}>▦</Text>
                   <Text style={styles.dashboardCardTinyText}>شاشات متعددة</Text>
@@ -2515,6 +2831,22 @@ return () => {
                 />
               )}
             </View>
+          )}
+
+          {screen === 'multiscreen' && credentials && (
+            <MultiScreenView
+              credentials={credentials}
+              channels={channels}
+              categories={categories}
+              onBack={() => setScreen('dashboard')}
+              onLoadCategory={async (c) => {
+                const data = await getLiveStreams(
+                  credentials,
+                  String(c.category_id)
+                );
+                return Array.isArray(data) ? data : [];
+              }}
+            />
           )}
 
           {screen === 'series-categories' && (
@@ -3609,6 +3941,91 @@ const styles = StyleSheet.create({
   epgRowTitle: { color: '#c7d3e3', fontSize: 12, marginTop: 2 },
 
   epgRowLiveText: { color: '#fff' },
+
+  multiHeader: {
+    minHeight: 56,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#161f30',
+    borderBottomWidth: 1,
+    borderBottomColor: '#273247',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  multiHint: {
+    color: '#9aa8bd',
+    fontSize: 11,
+    textAlign: 'center',
+    paddingVertical: 6,
+  },
+
+  multiGrid: { flex: 1, padding: 6 },
+
+  multiRow: { flex: 1, flexDirection: 'row' },
+
+  multiCell: {
+    flex: 1,
+    margin: 4,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    justifyContent: 'flex-end',
+  },
+
+  multiCellFocused: { borderColor: '#ff1e27' },
+
+  multiEmpty: {
+    flex: 1,
+    margin: 4,
+    borderRadius: 10,
+    backgroundColor: '#111a2b',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#2b3850',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  multiPlus: { color: '#4d6285', fontSize: 30, fontWeight: 'bold' },
+
+  multiEmptyText: { color: '#4d6285', fontSize: 12, marginTop: 4 },
+
+  multiBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+
+  multiName: { flex: 1, color: '#fff', fontSize: 10 },
+
+  multiClose: { paddingHorizontal: 6 },
+
+  multiCloseText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+
+  multiPickerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+
+  multiPicker: {
+    maxHeight: '72%',
+    backgroundColor: '#0b1220',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingHorizontal: 10,
+    paddingTop: 12,
+  },
 
   categoryNavBar: {
     flexDirection: 'row',
