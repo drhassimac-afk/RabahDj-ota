@@ -3242,7 +3242,7 @@ return () => {
             />
             )}
 
-            {screen === 'channels' && !isLandscape && (
+          {screen === 'channels' && !isLandscape && (
             <View style={styles.flex}>
               {renderHeader(selectedCategory || ' 📺 القنوات')}
 
