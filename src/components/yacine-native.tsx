@@ -21,6 +21,7 @@ import { Image,
   Animated,
   PanResponder,
 } from 'react-native';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import {
   SafeAreaProvider,
@@ -97,7 +98,8 @@ type Screen =
   | 'series-categories'
   | 'series-list'
   | 'series-detail'
-  | 'multiscreen';
+  | 'multiscreen'
+  | 'epg-guide';
 
 const FAVORITES_STORAGE_KEY = 'rabah_iptv_favorites';
 const LAST_WATCHED_STORAGE_KEY = 'rabah_iptv_last_watched';
@@ -1341,7 +1343,10 @@ function DashboardHeader({ onLogout }: { onLogout: () => void }) {
 
   return (
     <View style={[styles.dashboardHeader, { paddingTop: insets.top + 10 }]}>
-      <Text style={styles.dashboardBrand}>📺 RABAH TV</Text>
+      <View style={styles.brandRow}>
+        <Ionicons name="tv" size={22} color="#ff1e27" />
+        <Text style={styles.dashboardBrand}>RABAH TV</Text>
+      </View>
 
       <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
         <Text style={styles.logoutText}>خروج</Text>
@@ -1598,9 +1603,11 @@ function ChannelsSplitView({
                     onPress={() => onToggleFavorite(item)}
                     style={styles.splitStar}
                   >
-                    <Text style={styles.splitStarText}>
-                      {isFavorite(item) ? '⭐' : '☆'}
-                    </Text>
+                    <Ionicons
+                      name={isFavorite(item) ? 'star' : 'star-outline'}
+                      size={16}
+                      color={isFavorite(item) ? '#fbbf24' : '#6b7a92'}
+                    />
                   </TouchableOpacity>
 
                   <Text style={styles.splitRowNum} numberOfLines={1}>
@@ -1892,7 +1899,7 @@ function MultiScreenView({
             </View>
 
             <View style={styles.searchBox}>
-              <Text style={styles.searchIcon}>🔍</Text>
+              <Ionicons name="search" size={16} color="#7f8da3" style={styles.searchIcon} />
               <TextInput
                 value={query}
                 onChangeText={setQuery}
@@ -1968,6 +1975,225 @@ function MultiScreenView({
           </View>
         </View>
       )}
+    </View>
+  );
+}
+
+// ============================================================
+// دليل البرامج الكامل (قنوات + EPG)
+// ============================================================
+function EpgGuideView({
+  credentials,
+  categories,
+  channels,
+  onBack,
+  onPlay,
+  onLoadCategory,
+}: {
+  credentials: Credentials;
+  categories: CategoryItem[];
+  channels: Channel[];
+  onBack: () => void;
+  onPlay: (channel: Channel) => void;
+  onLoadCategory: (c: CategoryItem) => Promise<Channel[]>;
+}) {
+  const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  const landscape = width > height;
+
+  const [pool, setPool] = useState<Channel[]>(channels);
+  const [query, setQuery] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [activeCat, setActiveCat] = useState<string>('');
+  const [selected, setSelected] = useState<Channel | null>(
+    channels[0] ?? null
+  );
+
+  useEffect(() => {
+    if (channels.length) {
+      setPool(channels);
+      setSelected((prev) => prev ?? channels[0]);
+    }
+  }, [channels]);
+
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return pool;
+    return pool.filter((c) => (c.name || '').toLowerCase().includes(q));
+  }, [pool, query]);
+
+  const pickCategory = async (c: CategoryItem) => {
+    setBusy(true);
+    setActiveCat(String(c.category_id));
+
+    try {
+      const data = await onLoadCategory(c);
+      setPool(data);
+      setSelected(data[0] ?? null);
+      setQuery('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const listPane = (
+    <View style={landscape ? styles.guideLeft : styles.guideTop}>
+      <View style={styles.searchBox}>
+        <Ionicons name="search" size={16} color="#7f8da3" style={styles.searchIcon} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="ابحث عن قناة..."
+          placeholderTextColor="#7f8da3"
+          style={styles.searchInput}
+        />
+      </View>
+
+      {busy ? (
+        <View style={styles.center}>
+          <ActivityIndicator color="#ff1e27" />
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(item, i) => String(item.stream_id ?? i)}
+          initialNumToRender={14}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          removeClippedSubviews={Platform.OS === 'android'}
+          ListEmptyComponent={
+            <Text style={styles.splitEmptyText}>
+              اختر فئة من الأعلى لعرض قنواتها
+            </Text>
+          }
+          renderItem={({ item }) => {
+            const active =
+              selected != null &&
+              String(selected.stream_id) === String(item.stream_id);
+
+            return (
+              <TouchableOpacity
+                style={[styles.splitRow, active && styles.splitRowActive]}
+                onPress={() => setSelected(item)}
+              >
+                {item.stream_icon ? (
+                  <Image
+                    source={{ uri: item.stream_icon }}
+                    style={styles.splitRowLogo}
+                  />
+                ) : (
+                  <View style={styles.splitRowLogo} />
+                )}
+
+                <Text style={styles.splitRowName} numberOfLines={1}>
+                  {item.name}
+                </Text>
+
+                <TouchableOpacity
+                  onPress={() => onPlay(item)}
+                  style={styles.splitPlay}
+                >
+                  <Text style={styles.splitPlayText}>▶</Text>
+                </TouchableOpacity>
+              </TouchableOpacity>
+            );
+          }}
+        />
+      )}
+    </View>
+  );
+
+  const epgPane = (
+    <View style={landscape ? styles.guideRight : styles.guideBottom}>
+      <View style={styles.guideEpgHeader}>
+        <Text style={styles.guideEpgTitle} numberOfLines={1}>
+          📖 {selected?.name || 'اختر قناة'}
+        </Text>
+
+        {selected && (
+          <TouchableOpacity
+            style={styles.guidePlayButton}
+            onPress={() => onPlay(selected)}
+          >
+            <Text style={styles.guidePlayText}>▶ تشغيل</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {selected ? (
+        <EpgListPanel
+          credentials={credentials}
+          streamId={String(selected.stream_id)}
+        />
+      ) : (
+        <View style={styles.splitCenterBox}>
+          <Text style={styles.splitEmptyText}>لم تُحدَّد قناة</Text>
+        </View>
+      )}
+    </View>
+  );
+
+  return (
+    <View
+      style={[
+        styles.flex,
+        {
+          paddingTop: insets.top + 6,
+          paddingBottom: insets.bottom + 6,
+          paddingLeft: insets.left + 8,
+          paddingRight: insets.right + 8,
+        },
+      ]}
+    >
+      <View style={styles.splitTopBar}>
+        <TouchableOpacity onPress={onBack} style={styles.splitBackButton}>
+          <Text style={styles.splitBackText}>←</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.splitTitle} numberOfLines={1}>
+          📖 مباشر مع EPG
+        </Text>
+
+        <View style={{ flex: 1 }} />
+
+        <HeaderClock />
+      </View>
+
+      {categories.length > 0 && (
+        <FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          data={categories}
+          keyExtractor={(c, i) => String(c.category_id ?? i)}
+          style={styles.guideCatBar}
+          contentContainerStyle={{ paddingHorizontal: 4 }}
+          renderItem={({ item }) => {
+            const on = activeCat === String(item.category_id);
+
+            return (
+              <TouchableOpacity
+                style={[styles.seasonChip, on && styles.seasonChipActive]}
+                onPress={() => pickCategory(item)}
+              >
+                <Text
+                  style={[
+                    styles.seasonChipText,
+                    on && styles.seasonChipTextActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {item.category_name}
+                </Text>
+              </TouchableOpacity>
+            );
+          }}
+        />
+      )}
+
+      <View style={landscape ? styles.guideBodyRow : styles.guideBodyCol}>
+        {listPane}
+        {epgPane}
+      </View>
     </View>
   );
 }
@@ -2556,6 +2782,11 @@ return () => {
       setScreen('categories');
       return;
     }
+      if (screen === 'epg-guide') {
+        setScreen('dashboard');
+        return;
+      }
+
       if (screen === 'multiscreen') {
         setScreen('dashboard');
         return;
@@ -2804,7 +3035,7 @@ return () => {
               <View style={styles.dashboardGrid}>
                 {lastWatched && (
                   <TouchableOpacity style={styles.resumeCard} onPress={resumeLastWatched}>
-                    <Text style={styles.resumeIcon}>▶</Text>
+                    <Ionicons name="play-circle" size={30} color="#ff1e27" style={styles.resumeIcon} />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.resumeLabel}>
                         متابعة المشاهدة ·{' '}
@@ -2825,7 +3056,7 @@ return () => {
                   style={[styles.dashboardCardLarge, { backgroundColor: '#1f8a5c' }]}
                   onPress={() => setScreen('categories')}
                 >
-                  <Text style={styles.dashboardCardIcon}>📡</Text>
+                  <MaterialCommunityIcons name="satellite-variant" size={40} color="#fff" style={styles.dashboardCardIcon} />
                   <Text style={styles.dashboardCardTitle}>TV مباشر</Text>
                 </TouchableOpacity>
 
@@ -2834,7 +3065,7 @@ return () => {
                     style={[styles.dashboardCardSmall, { backgroundColor: '#c0392b' }]}
                     onPress={openMovieCategories}
                   >
-                    <Text style={styles.dashboardCardIcon}>🎬</Text>
+                    <MaterialCommunityIcons name="movie-open" size={34} color="#fff" style={styles.dashboardCardIcon} />
                     <Text style={styles.dashboardCardTitle}>أفلام</Text>
                   </TouchableOpacity>
 
@@ -2842,16 +3073,16 @@ return () => {
                     style={[styles.dashboardCardSmall, { backgroundColor: '#6c3fa8' }]}
                     onPress={openSeriesCategories}
                   >
-                    <Text style={styles.dashboardCardIcon}>🎞️</Text>
+                    <MaterialCommunityIcons name="television-classic" size={34} color="#fff" style={styles.dashboardCardIcon} />
                     <Text style={styles.dashboardCardTitle}>مسلسلات</Text>
                   </TouchableOpacity>
                 </View>
 
                 <TouchableOpacity
                   style={styles.dashboardCardTiny}
-                  onPress={() => Alert.alert('قريبًا 🔜', 'دليل البرامج (EPG) قيد التطوير')}
+                  onPress={() => setScreen('epg-guide')}
                 >
-                  <Text style={styles.dashboardCardTinyIcon}>📖</Text>
+                  <Ionicons name="calendar" size={20} color="#fff" style={styles.dashboardCardTinyIcon} />
                   <Text style={styles.dashboardCardTinyText}>مباشر مع EPG</Text>
                 </TouchableOpacity>
 
@@ -2859,7 +3090,7 @@ return () => {
                   style={styles.dashboardCardTiny}
                   onPress={() => setScreen('multiscreen')}
                 >
-                  <Text style={styles.dashboardCardTinyIcon}>▦</Text>
+                  <MaterialCommunityIcons name="view-grid" size={20} color="#fff" style={styles.dashboardCardTinyIcon} />
                   <Text style={styles.dashboardCardTinyText}>شاشات متعددة</Text>
                 </TouchableOpacity>
 
@@ -2878,7 +3109,7 @@ return () => {
                     );
                   }}
                 >
-                  <Text style={styles.dashboardCardTinyIcon}>🕐</Text>
+                  <Ionicons name="time" size={20} color="#fff" style={styles.dashboardCardTinyIcon} />
                   <Text style={styles.dashboardCardTinyText}>رتراباج</Text>
                 </TouchableOpacity>
               </View>
@@ -2892,9 +3123,9 @@ return () => {
               {renderHeader('📂 فئات القنوات')}
 
               <TouchableOpacity style={styles.favoritesRow} onPress={openFavorites}>
-                <Text style={styles.itemIcon}>⭐</Text>
+                <Ionicons name="star" size={24} color="#fbbf24" style={styles.itemIconV} />
                 <Text style={styles.itemText}>المفضلة ({favorites.length})</Text>
-                <Text style={styles.arrow}>‹</Text>
+                <Ionicons name="chevron-back" size={20} color="#9aa8bd" />
               </TouchableOpacity>
 
               {loading ? (
@@ -2922,9 +3153,9 @@ return () => {
                       style={styles.listItem}
                       onPress={() => openCategory(item)}
                     >
-                      <Text style={styles.itemIcon}>📂</Text>
+                      <Ionicons name="folder" size={24} color="#f0b429" style={styles.itemIconV} />
                       <Text style={styles.itemText}>{item.category_name}</Text>
-                      <Text style={styles.arrow}>‹</Text>
+                      <Ionicons name="chevron-back" size={20} color="#9aa8bd" />
                     </TouchableOpacity>
                   )}
                 />
@@ -2959,9 +3190,9 @@ return () => {
                       style={styles.listItem}
                       onPress={() => openMovieCategory(item)}
                     >
-                      <Text style={styles.itemIcon}>📂</Text>
+                      <Ionicons name="folder" size={24} color="#f0b429" style={styles.itemIconV} />
                       <Text style={styles.itemText}>{item.category_name}</Text>
-                      <Text style={styles.arrow}>‹</Text>
+                      <Ionicons name="chevron-back" size={20} color="#9aa8bd" />
                     </TouchableOpacity>
                   )}
                 />
@@ -3022,17 +3253,34 @@ return () => {
                           style={styles.channelLogo}
                         />
                       ) : (
-                        <Text style={styles.itemIcon}>🎬</Text>
+                        <MaterialCommunityIcons name="movie-open-outline" size={24} color="#e07a5f" style={styles.itemIconV} />
                       )}
                       <Text style={styles.itemText} numberOfLines={2}>
                         {item.name || 'فيلم بدون اسم'}
                       </Text>
-                      <Text style={styles.playIcon}>▶</Text>
+                      <Ionicons name="play" size={16} color="#ff1e27" style={styles.playIconV} />
                     </TouchableOpacity>
                   )}
                 />
               )}
             </View>
+          )}
+
+          {screen === 'epg-guide' && credentials && (
+            <EpgGuideView
+              credentials={credentials}
+              categories={categories}
+              channels={channels}
+              onBack={() => setScreen('dashboard')}
+              onPlay={openChannel}
+              onLoadCategory={async (c) => {
+                const data = await getLiveStreams(
+                  credentials,
+                  String(c.category_id)
+                );
+                return Array.isArray(data) ? data : [];
+              }}
+            />
           )}
 
           {screen === 'multiscreen' && credentials && (
@@ -3077,9 +3325,9 @@ return () => {
                       style={styles.listItem}
                       onPress={() => openSeriesCategory(item)}
                     >
-                      <Text style={styles.itemIcon}>📂</Text>
+                      <Ionicons name="folder" size={24} color="#f0b429" style={styles.itemIconV} />
                       <Text style={styles.itemText}>{item.category_name}</Text>
-                      <Text style={styles.arrow}>‹</Text>
+                      <Ionicons name="chevron-back" size={20} color="#9aa8bd" />
                     </TouchableOpacity>
                   )}
                 />
@@ -3092,7 +3340,7 @@ return () => {
               {renderHeader('🎞️ المسلسلات')}
 
               <View style={styles.searchBox}>
-                <Text style={styles.searchIcon}>🔍</Text>
+                <Ionicons name="search" size={16} color="#7f8da3" style={styles.searchIcon} />
                 <TextInput
                   value={seriesSearch}
                   onChangeText={setSeriesSearch}
@@ -3134,14 +3382,14 @@ return () => {
                           style={styles.channelLogo}
                         />
                       ) : (
-                        <Text style={styles.itemIcon}>🎞️</Text>
+                        <MaterialCommunityIcons name="television-classic" size={24} color="#a78bfa" style={styles.itemIconV} />
                       )}
 
                       <Text style={styles.itemText} numberOfLines={2}>
                         {item.name}
                       </Text>
 
-                      <Text style={styles.arrow}>‹</Text>
+                      <Ionicons name="chevron-back" size={20} color="#9aa8bd" />
                     </TouchableOpacity>
                   )}
                 />
@@ -3215,14 +3463,14 @@ return () => {
                           style={styles.channelLogo}
                         />
                       ) : (
-                        <Text style={styles.itemIcon}>▶</Text>
+                        <Ionicons name="play-circle-outline" size={24} color="#8fd3a8" style={styles.itemIconV} />
                       )}
 
                       <Text style={styles.itemText} numberOfLines={2}>
                         {item.name}
                       </Text>
 
-                      <Text style={styles.playIcon}>▶</Text>
+                      <Ionicons name="play" size={16} color="#ff1e27" style={styles.playIconV} />
                     </TouchableOpacity>
                   )}
                 />
@@ -3278,7 +3526,7 @@ return () => {
               )}
 
               <View style={styles.searchBox}>
-                <Text style={styles.searchIcon}>🔍</Text>
+                <Ionicons name="search" size={16} color="#7f8da3" style={styles.searchIcon} />
                 <TextInput
                   value={searchQuery}
                   onChangeText={setSearchQuery}
@@ -3321,9 +3569,11 @@ return () => {
                         onPress={() => toggleFavorite(item)}
                         style={styles.favoriteStarButton}
                       >
-                        <Text style={styles.favoriteStarText}>
-                          {isFavorite(item) ? '⭐' : '☆'}
-                        </Text>
+                        <Ionicons
+                          name={isFavorite(item) ? 'star' : 'star-outline'}
+                          size={20}
+                          color={isFavorite(item) ? '#fbbf24' : '#6b7a92'}
+                        />
                       </TouchableOpacity>
 
                       <TouchableOpacity
@@ -3336,7 +3586,7 @@ return () => {
                           style={styles.channelLogo}
                         />
                       ) : (
-                        <Text style={styles.itemIcon}>📺</Text>
+                        <Ionicons name="tv-outline" size={24} color="#5fb3d4" style={styles.itemIconV} />
                       )}
                         <View style={{ flex: 1, marginHorizontal: 10 }}>
                           <Text style={styles.itemText} numberOfLines={1}>
@@ -3350,7 +3600,7 @@ return () => {
                             />
                           )}
                         </View>
-                        <Text style={styles.playIcon}>▶</Text>
+                        <Ionicons name="play" size={16} color="#ff1e27" style={styles.playIconV} />
                       </TouchableOpacity>
                     </View>
                   )}
@@ -3487,7 +3737,7 @@ const styles = StyleSheet.create({
     height: 44,
   },
 
-  searchIcon: { fontSize: 15, marginEnd: 8 },
+  searchIcon: { marginEnd: 8 },
 
   searchInput: {
     flex: 1,
@@ -3547,6 +3797,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#26344d',
   },
   itemIcon: { fontSize: 24, width: 40, textAlign: 'center' },
+
+  itemIconV: { width: 40, textAlign: 'center' },
+
+  playIconV: { paddingHorizontal: 10 },
+
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 
   itemText: {
     flex: 1,
@@ -3621,11 +3877,11 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
-  dashboardCardTinyIcon: { fontSize: 20, marginEnd: 10 },
+  dashboardCardTinyIcon: { marginEnd: 12 },
 
   dashboardCardTinyText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
 
-  dashboardCardIcon: { fontSize: 34, marginBottom: 8 },
+  dashboardCardIcon: { marginBottom: 10 },
 
   dashboardCardTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
 
@@ -3653,11 +3909,7 @@ const styles = StyleSheet.create({
     borderColor: '#3a4a68',
   },
 
-  resumeIcon: {
-    fontSize: 22,
-    color: '#ff1e27',
-    marginEnd: 12,
-  },
+  resumeIcon: { marginEnd: 12 },
 
   resumeLabel: { color: '#9aa8bd', fontSize: 12 },
 
@@ -4143,6 +4395,67 @@ const styles = StyleSheet.create({
   epgRowTitle: { color: '#c7d3e3', fontSize: 12, marginTop: 2 },
 
   epgRowLiveText: { color: '#fff' },
+
+  guideCatBar: { maxHeight: 46, marginBottom: 6 },
+
+  guideBodyRow: { flex: 1, flexDirection: 'row' },
+  guideBodyCol: { flex: 1 },
+
+  guideLeft: {
+    width: '42%',
+    backgroundColor: '#111a2b',
+    borderRadius: 12,
+    padding: 6,
+    marginEnd: 8,
+  },
+
+  guideRight: {
+    flex: 1,
+    backgroundColor: '#111a2b',
+    borderRadius: 12,
+    padding: 8,
+  },
+
+  guideTop: {
+    flex: 1,
+    backgroundColor: '#111a2b',
+    borderRadius: 12,
+    padding: 6,
+    marginBottom: 8,
+  },
+
+  guideBottom: {
+    flex: 1,
+    backgroundColor: '#111a2b',
+    borderRadius: 12,
+    padding: 8,
+  },
+
+  guideEpgHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#273247',
+    marginBottom: 6,
+  },
+
+  guideEpgTitle: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+
+  guidePlayButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#ff1e27',
+  },
+
+  guidePlayText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
 
   tsButtonActive: { backgroundColor: 'rgba(255,30,39,0.85)' },
 
