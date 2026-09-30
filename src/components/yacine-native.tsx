@@ -291,6 +291,38 @@ const currentBrightness = useRef(0.5);
   const retryCount = useRef(0);
   const emptyRef = useRef(false);
 
+  // فحص استباقي: هل الملف فارغ عند المزوّد؟
+  useEffect(() => {
+    let cancelled = false;
+    emptyRef.current = false;
+
+    (async () => {
+      try {
+        const res = await fetch(streamUrl, {
+          headers: { Range: 'bytes=0-1' },
+        });
+
+        const buf = await res.arrayBuffer();
+
+        if (cancelled) return;
+
+        if (res.ok && buf.byteLength === 0) {
+          emptyRef.current = true;
+          setVideoStatus('error');
+          setVideoError(
+            'المحتوى غير متاح حالياً عند المزوّد (الملف فارغ على السيرفر).'
+          );
+        }
+      } catch {
+        // تجاهل — نترك المشغّل يحاول
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [streamUrl]);
+
   const buildFallbackUrl = (url: string, attempt: number) => {
     const m = url.match(/\.([a-z0-9]+)(\?.*)?$/i);
     if (!m) return null;
@@ -354,17 +386,7 @@ const currentBrightness = useRef(0.5);
 
       if (event.status === 'error') {
         const raw = event.error?.message || '';
-        fetch(streamUrl, { headers: { Range: 'bytes=0-1' } })
-          .then((r) => r.arrayBuffer())
-          .then((buf) => {
-            if (buf.byteLength === 0) {
-              emptyRef.current = true;
-              setVideoStatus('error');
-              setVideoError('المحتوى غير متاح حالياً عند المزوّد (الملف فارغ).');
-            }
-          })
-          .catch(() => {});
-        const fatal = /CLEARTEXT/i.test(raw);
+        const fatal = /CLEARTEXT/i.test(raw) || emptyRef.current;
         const next = fatal ? null : buildFallbackUrl(streamUrl, retryCount.current);
 
         if (next) {
@@ -1905,9 +1927,6 @@ return () => {
       ep.stream_id,
       ep.container_extension || 'mp4'
     );
-
-    console.log('EPISODE_URL =>', url);
-    console.log('EPISODE_RAW =>', JSON.stringify(ep));
 
     setActiveChannel({
       url,
