@@ -187,7 +187,7 @@ function ChannelEpgLabel({
 
   return (
     <Text style={styles.epgText} numberOfLines={1}>
-      🔴 الآن: {title}
+      ● الآن: {title}
     </Text>
   );
 }
@@ -648,7 +648,7 @@ const minimizePlayer = async () => {
       {!fullscreen && (
         <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
           <TouchableOpacity onPress={minimizePlayer} style={styles.backButton}>
-            <Text style={styles.backText}>تصغير ▾</Text>
+            <Ionicons name="chevron-down" size={18} color="#fff" />
           </TouchableOpacity>
 
           <Text style={styles.headerTitle} numberOfLines={1}>
@@ -659,7 +659,7 @@ const minimizePlayer = async () => {
             onPress={onClose}
             style={styles.closeButton}
           >
-            <Text style={styles.closeButtonText}>✕</Text>
+            <Ionicons name="close" size={18} color="#fff" />
           </TouchableOpacity>
         </View>
       )}
@@ -725,9 +725,12 @@ const minimizePlayer = async () => {
             ]}
             pointerEvents="none"
           >
-            <Text style={styles.gestureIndicatorIcon}>
-              {indicator.type === 'brightness' ? '☀️' : '🔊'}
-            </Text>
+            <Ionicons
+              name={indicator.type === 'brightness' ? 'sunny' : 'volume-high'}
+              size={26}
+              color="#fff"
+              style={styles.gestureIndicatorIcon}
+            />
             <Text style={styles.gestureIndicatorText}>
               {Math.round(indicator.value * 100)}%
             </Text>
@@ -746,7 +749,7 @@ const minimizePlayer = async () => {
             ]}
           >
             <TouchableOpacity style={styles.fsTopButton} onPress={minimizePlayer}>
-              <Text style={styles.fsTopButtonText}>▾</Text>
+              <Ionicons name="chevron-down" size={18} color="#fff" />
             </TouchableOpacity>
 
             <Text style={styles.fsTitle} numberOfLines={1}>
@@ -765,11 +768,11 @@ const minimizePlayer = async () => {
               style={styles.fsTopButton}
               onPress={toggleFullscreen}
             >
-              <Text style={styles.fsTopButtonText}>⤡</Text>
+              <Ionicons name="contract" size={18} color="#fff" />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.fsTopButton} onPress={toggleLock}>
-              <Text style={styles.fsTopButtonText}>🔓</Text>
+              <Ionicons name="lock-open-outline" size={18} color="#fff" />
             </TouchableOpacity>
           </View>
         )}
@@ -779,7 +782,8 @@ const minimizePlayer = async () => {
             style={[styles.lockBadge, { top: insets.top + 12 }]}
             onPress={toggleLock}
           >
-            <Text style={styles.lockBadgeText}>🔒 اضغط لفتح القفل</Text>
+            <Ionicons name="lock-closed" size={14} color="#fff" />
+            <Text style={styles.lockBadgeText}> اضغط لفتح القفل</Text>
           </TouchableOpacity>
         )}
 
@@ -794,9 +798,11 @@ const minimizePlayer = async () => {
             ]}
             onPress={toggleFullscreen}
           >
-            <Text style={styles.fullscreenText}>
-              {fullscreen ? '⛶ خروج' : '⛶ ملء الشاشة'}
-            </Text>
+            <Ionicons
+              name={fullscreen ? 'contract' : 'expand'}
+              size={18}
+              color="#fff"
+            />
           </TouchableOpacity>
         )}
 
@@ -806,7 +812,7 @@ const minimizePlayer = async () => {
               style={[styles.sideSlider, { left: 20 + insets.left }]}
               pointerEvents="none"
             >
-              <Text style={styles.sideIcon}>☀️</Text>
+              <Ionicons name="sunny" size={18} color="#fff" style={styles.sideIcon} />
               <View style={styles.sliderTrack}>
                 <View
                   style={[
@@ -821,7 +827,7 @@ const minimizePlayer = async () => {
               style={[styles.sideSlider, { right: 20 + insets.right }]}
               pointerEvents="none"
             >
-              <Text style={styles.sideIcon}>🔊</Text>
+              <Ionicons name="volume-high" size={18} color="#fff" style={styles.sideIcon} />
               <View style={styles.sliderTrack}>
                 <View
                   style={[
@@ -839,7 +845,8 @@ const minimizePlayer = async () => {
             style={[styles.tsBadge, { top: insets.top + 56 }]}
             onPress={() => onLive?.()}
           >
-            <Text style={styles.tsBadgeText}>⏪ تسجيل · العودة للمباشر</Text>
+            <Ionicons name="play-back" size={13} color="#fff" />
+            <Text style={styles.tsBadgeText}> تسجيل · العودة للمباشر</Text>
           </TouchableOpacity>
         )}
 
@@ -859,11 +866,11 @@ const minimizePlayer = async () => {
             >
               <View style={styles.drawerHeader}>
                 <Text style={styles.drawerTitle}>
-                  🕐 الرتراباج · متاح {archiveDays} يوم
+                  الرتراباج · متاح {archiveDays} يوم
                 </Text>
 
                 <TouchableOpacity onPress={() => setShowTimeshift(false)}>
-                  <Text style={styles.drawerCloseText}>✕</Text>
+                  <Ionicons name="close" size={18} color="#fff" />
                 </TouchableOpacity>
               </View>
 
@@ -892,7 +899,8 @@ const minimizePlayer = async () => {
                     setShowTimeshift(false);
                   }}
                 >
-                  <Text style={styles.tsLiveText}>🔴 العودة للبث المباشر</Text>
+                  <Ionicons name="radio" size={15} color="#fff" />
+                  <Text style={styles.tsLiveText}> العودة للبث المباشر</Text>
                 </TouchableOpacity>
               )}
 
@@ -949,7 +957,7 @@ const minimizePlayer = async () => {
                 </Text>
 
                 <TouchableOpacity onPress={() => setShowChannelList(false)}>
-                  <Text style={styles.drawerCloseText}>✕</Text>
+                  <Ionicons name="close" size={18} color="#fff" />
                 </TouchableOpacity>
               </View>
 
@@ -1008,7 +1016,9 @@ const minimizePlayer = async () => {
                         {item.name}
                       </Text>
 
-                      {isActive && <Text style={styles.drawerPlaying}>▶</Text>}
+                      {isActive && (
+                        <Ionicons name="volume-high" size={14} color="#ff1e27" />
+                      )}
                     </TouchableOpacity>
                   );
                 }}
@@ -1038,7 +1048,7 @@ const minimizePlayer = async () => {
               style={[styles.controlButton, styles.drawerToggle]}
               onPress={() => setShowChannelList(true)}
             >
-              <Text style={styles.controlButtonText}>☰</Text>
+              <Ionicons name="list" size={22} color="#fff" />
             </TouchableOpacity>
           )}
 
@@ -1050,7 +1060,7 @@ const minimizePlayer = async () => {
               ]}
               onPress={() => setShowTimeshift(true)}
             >
-              <Text style={styles.controlButtonText}>🕐</Text>
+              <Ionicons name="time-outline" size={22} color="#fff" />
             </TouchableOpacity>
           )}
 
@@ -1059,11 +1069,15 @@ const minimizePlayer = async () => {
             onPress={onPrevious}
             disabled={!hasPrevious}
           >
-            <Text style={styles.controlButtonText}>⏮</Text>
+            <Ionicons name="play-skip-back" size={22} color="#fff" />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.controlButtonPlay} onPress={togglePlayPause}>
-            <Text style={styles.controlButtonText}>{isPlaying ? '⏸' : '▶'}</Text>
+            <Ionicons
+              name={isPlaying ? 'pause' : 'play'}
+              size={28}
+              color="#fff"
+            />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -1071,7 +1085,7 @@ const minimizePlayer = async () => {
             onPress={onNext}
             disabled={!hasNext}
           >
-            <Text style={styles.controlButtonText}>⏭</Text>
+            <Ionicons name="play-skip-forward" size={22} color="#fff" />
           </TouchableOpacity>
         </View>
         )}
@@ -1185,7 +1199,7 @@ function MiniPlayer({
         style={styles.miniPlayerClose}
         onPress={onClose}
       >
-        <Text style={styles.miniPlayerCloseText}>✕</Text>
+        <Ionicons name="close" size={12} color="#fff" />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -1284,7 +1298,7 @@ function PlayerEpgBar({
     <View style={[styles.epgBar, { bottom: bottomOffset }]} pointerEvents="none">
       {current && (
         <Text style={styles.epgNow} numberOfLines={1}>
-          🔴 الآن: {current.title}
+          ● الآن: {current.title}
         </Text>
       )}
 
@@ -1299,7 +1313,7 @@ function PlayerEpgBar({
 
       {next && (
         <Text style={styles.epgNext} numberOfLines={1}>
-          ⏭ التالي: {next.title}
+          › التالي: {next.title}
         </Text>
       )}
     </View>
@@ -1498,7 +1512,8 @@ function PreviewPlayer({
       />
 
       <View style={styles.previewHint} pointerEvents="none">
-        <Text style={styles.previewHintText}>⛶ اضغط للتكبير</Text>
+        <Ionicons name="expand" size={12} color="#fff" />
+        <Text style={styles.previewHintText}> اضغط للتكبير</Text>
       </View>
     </View>
   );
@@ -1559,7 +1574,7 @@ function ChannelsSplitView({
     >
       <View style={styles.splitTopBar}>
         <TouchableOpacity onPress={onBack} style={styles.splitBackButton}>
-          <Text style={styles.splitBackText}>←</Text>
+          <Ionicons name="arrow-forward" size={18} color="#fff" />
         </TouchableOpacity>
 
         <Text style={styles.splitTitle} numberOfLines={1}>
@@ -1631,7 +1646,7 @@ function ChannelsSplitView({
                     onPress={() => onPlay(item)}
                     style={styles.splitPlay}
                   >
-                    <Text style={styles.splitPlayText}>▶</Text>
+                    <Ionicons name="play" size={14} color="#ff1e27" />
                   </TouchableOpacity>
                 </TouchableOpacity>
               );
@@ -1655,7 +1670,7 @@ function ChannelsSplitView({
         </View>
 
         <View style={styles.splitRight}>
-          <Text style={styles.splitRightTitle}>📖 دليل البرامج</Text>
+          <Text style={styles.splitRightTitle}>دليل البرامج</Text>
 
           {selected && credentials ? (
             <EpgListPanel
@@ -1731,7 +1746,7 @@ function MultiCell({
   if (!channel) {
     return (
       <TouchableOpacity style={styles.multiEmpty} onPress={onPick}>
-        <Text style={styles.multiPlus}>＋</Text>
+        <Ionicons name="add-circle-outline" size={32} color="#4d6285" />
         <Text style={styles.multiEmptyText}>اختر قناة</Text>
       </TouchableOpacity>
     );
@@ -1753,12 +1768,18 @@ function MultiCell({
       />
 
       <View style={styles.multiBar}>
+        <Ionicons
+          name={muted ? 'volume-mute' : 'volume-high'}
+          size={12}
+          color={muted ? '#8fa0bb' : '#ff1e27'}
+        />
+
         <Text style={styles.multiName} numberOfLines={1}>
-          {muted ? '🔇' : '🔊'} {channel.name}
+          {' '}{channel.name}
         </Text>
 
         <TouchableOpacity onPress={onClear} style={styles.multiClose}>
-          <Text style={styles.multiCloseText}>✕</Text>
+          <Ionicons name="close" size={12} color="#fff" />
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
@@ -1833,7 +1854,7 @@ function MultiScreenView({
         </TouchableOpacity>
 
         <Text style={styles.headerTitle} numberOfLines={1}>
-          ▦ شاشات متعددة
+          شاشات متعددة
         </Text>
 
         <TouchableOpacity
@@ -1894,7 +1915,7 @@ function MultiScreenView({
               </Text>
 
               <TouchableOpacity onPress={() => setPicking(null)}>
-                <Text style={styles.drawerCloseText}>✕</Text>
+                <Ionicons name="close" size={18} color="#fff" />
               </TouchableOpacity>
             </View>
 
@@ -3504,7 +3525,7 @@ return () => {
                     onPress={() => shiftCategory(-1)}
                     disabled={categoryIndex <= 0}
                   >
-                    <Text style={styles.categoryNavText}>›</Text>
+                    <Ionicons name="chevron-forward" size={22} color="#fff" />
                   </TouchableOpacity>
 
                   <Text style={styles.categoryNavLabel} numberOfLines={1}>
@@ -3520,7 +3541,7 @@ return () => {
                     onPress={() => shiftCategory(1)}
                     disabled={categoryIndex >= categories.length - 1}
                   >
-                    <Text style={styles.categoryNavText}>‹</Text>
+                    <Ionicons name="chevron-back" size={22} color="#fff" />
                   </TouchableOpacity>
                 </View>
               )}
@@ -4127,6 +4148,8 @@ const styles = StyleSheet.create({
   lockBadge: {
     position: 'absolute',
     alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.75)',
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -4356,6 +4379,8 @@ const styles = StyleSheet.create({
 
   previewHint: {
     position: 'absolute',
+    flexDirection: 'row',
+    alignItems: 'center',
     right: 8,
     bottom: 8,
     backgroundColor: 'rgba(0,0,0,0.65)',
@@ -4462,6 +4487,8 @@ const styles = StyleSheet.create({
   tsBadge: {
     position: 'absolute',
     alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: 'rgba(255,30,39,0.9)',
     paddingHorizontal: 14,
     paddingVertical: 7,
@@ -4511,6 +4538,8 @@ const styles = StyleSheet.create({
   tsChipText: { color: '#e6ecf5', fontSize: 13, fontWeight: '600' },
 
   tsLiveButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     marginTop: 14,
     paddingVertical: 12,
     borderRadius: 10,
