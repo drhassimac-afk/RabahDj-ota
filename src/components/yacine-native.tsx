@@ -79,6 +79,11 @@ type SeriesItem = {
   cover?: string;
 };
 
+type WatchedItem = {
+  item: Channel;
+  source: 'live' | 'movie' | 'series';
+};
+
 type Screen =
   | 'login'
   | 'dashboard'
@@ -1537,9 +1542,10 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [categoryIndex, setCategoryIndex] = useState(-1);
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState<Channel[]>([]);
-  const [lastWatched, setLastWatched] = useState<Channel | null>(null);
+  const [lastWatched, setLastWatched] = useState<WatchedItem | null>(null);
   const [movieCategories, setMovieCategories] = useState<CategoryItem[]>([]);
   const [movies, setMovies] = useState<Channel[]>([]);
   const [movieSearchQuery, setMovieSearchQuery] = useState('');
@@ -1615,6 +1621,7 @@ return () => {
   function openFavorites() {
     setChannels(favorites);
     setSelectedCategory('⭐ المفضلة');
+    setCategoryIndex(-1);
     setSearchQuery('');
     setScreen('channels');
   }
@@ -1622,33 +1629,69 @@ return () => {
   async function loadLastWatched() {
     try {
       const raw = await AsyncStorage.getItem(LAST_WATCHED_STORAGE_KEY);
-      if (raw) {
-        setLastWatched(JSON.parse(raw));
+      if (!raw) return;
+
+      const parsed = JSON.parse(raw);
+
+      // ترقية الصيغة القديمة (كانت تخزّن القناة مباشرة)
+      if (parsed && parsed.item) {
+        setLastWatched(parsed as WatchedItem);
+      } else if (parsed && parsed.stream_id != null) {
+        setLastWatched({ item: parsed as Channel, source: 'live' });
       }
     } catch {
       // تجاهل
     }
   }
 
+  function rememberWatched(
+    item: Channel,
+    source: 'live' | 'movie' | 'series'
+  ) {
+    const entry: WatchedItem = { item, source };
+    setLastWatched(entry);
+    AsyncStorage.setItem(
+      LAST_WATCHED_STORAGE_KEY,
+      JSON.stringify(entry)
+    ).catch(() => {});
+  }
+
   function resumeLastWatched() {
     if (!credentials || !lastWatched) return;
 
-    const index = channels.findIndex(
-      (c) => String(c.stream_id) === String(lastWatched.stream_id)
-    );
+    const { item, source } = lastWatched;
+    const id = String(item.stream_id);
 
-    const url = getStreamUrl(
-      credentials,
-      String(lastWatched.stream_id),
-      'm3u8'
-    );
+    let url = '';
+    let list: Channel[] = [];
+
+    if (source === 'movie') {
+      url = getVodStreamUrl(
+        credentials,
+        item.stream_id,
+        item.container_extension || 'mkv'
+      );
+      list = movies;
+    } else if (source === 'series') {
+      url = getSeriesEpisodeUrl(
+        credentials,
+        item.stream_id,
+        item.container_extension || 'mkv'
+      );
+      list = episodes;
+    } else {
+      url = getStreamUrl(credentials, id, 'm3u8');
+      list = channels;
+    }
+
+    const index = list.findIndex((c) => String(c.stream_id) === id);
 
     setActiveChannel({
       url,
-      name: lastWatched.name || 'قناة',
+      name: item.name || 'مشاهدة',
       index: index >= 0 ? index : -1,
-      source: 'live',
-      streamId: String(lastWatched.stream_id),
+      source,
+      streamId: id,
     });
 
     setPlayerMinimized(false);
@@ -1722,6 +1765,11 @@ return () => {
     try {
       setLoading(true);
       setSelectedCategory(String(category.category_name));
+      setCategoryIndex(
+        categories.findIndex(
+          (c) => String(c.category_id) === String(category.category_id)
+        )
+      );
 
       const data = await getLiveStreams(credentials, String(category.category_id));
       setChannels(Array.isArray(data) ? data : []);
@@ -1732,7 +1780,16 @@ return () => {
     } finally {
       setLoading(false);
     }
-  }, [credentials]);
+  }, [credentials, categories]);
+
+  function shiftCategory(delta: number) {
+    if (categoryIndex < 0) return;
+
+    const next = categoryIndex + delta;
+    if (next < 0 || next >= categories.length) return;
+
+    openCategory(categories[next]);
+  }
 
   function playChannelAtIndex(index: number) {
     if (!credentials) return;
@@ -1748,11 +1805,7 @@ return () => {
       streamId: String(channel.stream_id),
     });
 
-    setLastWatched(channel);
-    AsyncStorage.setItem(
-      LAST_WATCHED_STORAGE_KEY,
-      JSON.stringify(channel)
-    ).catch(() => {});
+    rememberWatched(channel, 'live');
   }
 
   const openChannel = useCallback((channel: Channel) => {
@@ -1773,8 +1826,7 @@ return () => {
     });
     setPlayerMinimized(false);
 
-    setLastWatched(channel);
-    AsyncStorage.setItem(LAST_WATCHED_STORAGE_KEY, JSON.stringify(channel)).catch(() => {});
+    rememberWatched(channel, 'live');
   }, [credentials, channels, activeChannel, playerMinimized]);
 
   async function openMovieCategories() {
@@ -1819,6 +1871,8 @@ return () => {
       source: 'movie',
       streamId: String(movie.stream_id),
     });
+
+    rememberWatched(movie, 'movie');
   }
 
   function openMovie(movie: Channel) {
@@ -1832,6 +1886,8 @@ return () => {
       source: 'movie',
       streamId: String(movie.stream_id),
     });
+
+    rememberWatched(movie, 'movie');
     setPlayerMinimized(false);
   }
 
@@ -1935,6 +1991,8 @@ return () => {
       source: 'series',
       streamId: String(ep.stream_id),
     });
+
+    rememberWatched(ep, 'series');
   }
 
   function openEpisode(ep: Channel) {
@@ -2241,9 +2299,16 @@ return () => {
                   <TouchableOpacity style={styles.resumeCard} onPress={resumeLastWatched}>
                     <Text style={styles.resumeIcon}>▶</Text>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.resumeLabel}>متابعة المشاهدة</Text>
+                      <Text style={styles.resumeLabel}>
+                        متابعة المشاهدة ·{' '}
+                        {lastWatched.source === 'movie'
+                          ? '🎬 فيلم'
+                          : lastWatched.source === 'series'
+                          ? '🎞️ مسلسل'
+                          : '📡 مباشر'}
+                      </Text>
                       <Text style={styles.resumeChannelName} numberOfLines={1}>
-                        {lastWatched.name}
+                        {lastWatched.item.name}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -2646,6 +2711,37 @@ return () => {
             {screen === 'channels' && !isLandscape && (
             <View style={styles.flex}>
               {renderHeader(selectedCategory || ' 📺 القنوات')}
+
+              {categoryIndex >= 0 && categories.length > 1 && (
+                <View style={styles.categoryNavBar}>
+                  <TouchableOpacity
+                    style={[
+                      styles.categoryNavButton,
+                      categoryIndex <= 0 && styles.categoryNavDisabled,
+                    ]}
+                    onPress={() => shiftCategory(-1)}
+                    disabled={categoryIndex <= 0}
+                  >
+                    <Text style={styles.categoryNavText}>›</Text>
+                  </TouchableOpacity>
+
+                  <Text style={styles.categoryNavLabel} numberOfLines={1}>
+                    {categoryIndex + 1} / {categories.length}
+                  </Text>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.categoryNavButton,
+                      categoryIndex >= categories.length - 1 &&
+                        styles.categoryNavDisabled,
+                    ]}
+                    onPress={() => shiftCategory(1)}
+                    disabled={categoryIndex >= categories.length - 1}
+                  >
+                    <Text style={styles.categoryNavText}>‹</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
               <View style={styles.searchBox}>
                 <Text style={styles.searchIcon}>🔍</Text>
@@ -3513,6 +3609,30 @@ const styles = StyleSheet.create({
   epgRowTitle: { color: '#c7d3e3', fontSize: 12, marginTop: 2 },
 
   epgRowLiveText: { color: '#fff' },
+
+  categoryNavBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 12,
+    marginTop: 10,
+    paddingHorizontal: 6,
+  },
+
+  categoryNavButton: {
+    width: 44,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#26344d',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  categoryNavDisabled: { opacity: 0.3 },
+
+  categoryNavText: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
+
+  categoryNavLabel: { color: '#9aa8bd', fontSize: 12, fontWeight: '600' },
 
   seasonBar: { paddingVertical: 10 },
 
