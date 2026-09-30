@@ -239,3 +239,55 @@ export function getSeriesEpisodeUrl(credentials, episodeId, ext) {
 
   return base + '/series/' + user + '/' + pass + '/' + episodeId + '.' + (ext || 'mp4');
 }
+
+
+// ============================================================
+// الرتراباج / التسجيل (Timeshift / Catch-up)
+// ============================================================
+function tsPad(n) {
+  return String(n).padStart(2, '0');
+}
+
+// صيغة Xtream القياسية: YYYY-MM-DD:HH-MM
+export function formatTimeshiftStart(date) {
+  return (
+    date.getFullYear() +
+    '-' + tsPad(date.getMonth() + 1) +
+    '-' + tsPad(date.getDate()) +
+    ':' + tsPad(date.getHours()) +
+    '-' + tsPad(date.getMinutes())
+  );
+}
+
+// variant 0: /timeshift/user/pass/DURATION/START/ID.ext
+// variant 1: /streaming/timeshift.php?...
+export function getTimeshiftUrl(
+  { server, username, password },
+  streamId,
+  startDate,
+  durationMinutes,
+  ext = 'ts',
+  variant = 0
+) {
+  const base = String(server || '').replace(/\/+$/, '');
+  const u = encodeURIComponent(username);
+  const p = encodeURIComponent(password);
+  const stamp = formatTimeshiftStart(startDate);
+  const dur = Math.max(1, Math.round(durationMinutes));
+
+  if (variant === 1) {
+    return (
+      base +
+      '/streaming/timeshift.php?username=' + u +
+      '&password=' + p +
+      '&stream=' + encodeURIComponent(streamId) +
+      '&start=' + encodeURIComponent(stamp) +
+      '&duration=' + dur
+    );
+  }
+
+  return (
+    base + '/timeshift/' + u + '/' + p + '/' + dur + '/' +
+    stamp + '/' + encodeURIComponent(streamId) + '.' + ext
+  );
+}

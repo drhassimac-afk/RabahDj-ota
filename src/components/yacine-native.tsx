@@ -49,6 +49,7 @@ import {
   getSeries,
   getSeriesInfo,
   getSeriesEpisodeUrl,
+  getTimeshiftUrl,
 } from '../../api/xtream';
 
 interface YacineNativeProps {
@@ -71,6 +72,8 @@ type Channel = {
   name: string;
   stream_icon?: string;
   container_extension?: string;
+  tv_archive?: number | string;
+  tv_archive_duration?: number | string;
 };
 
 type SeriesItem = {
@@ -100,6 +103,18 @@ const FAVORITES_STORAGE_KEY = 'rabah_iptv_favorites';
 const LAST_WATCHED_STORAGE_KEY = 'rabah_iptv_last_watched';
 
 const DRAWER_ITEM_HEIGHT = 58;
+
+// خيارات العودة بالزمن (بالدقائق)
+const TIMESHIFT_OPTIONS = [
+  { min: 15, label: 'قبل ١٥ د' },
+  { min: 30, label: 'قبل ٣٠ د' },
+  { min: 60, label: 'قبل ساعة' },
+  { min: 120, label: 'قبل ساعتين' },
+  { min: 360, label: 'قبل ٦ ساعات' },
+  { min: 720, label: 'قبل ١٢ ساعة' },
+  { min: 1440, label: 'أمس' },
+  { min: 2880, label: 'قبل يومين' },
+];
 
 const FIT_MODES = [
   { value: 'contain', label: 'احتواء' },
@@ -193,6 +208,10 @@ function PlayerView({
   currentIndex,
   onSelectIndex,
   backRef,
+  archiveDays,
+  isTimeshift,
+  onTimeshift,
+  onLive,
 }: {
   streamUrl: string;
   channelName: string;
@@ -208,6 +227,10 @@ function PlayerView({
   currentIndex?: number;
   onSelectIndex?: (index: number) => void;
   backRef?: { current: (() => void) | null };
+  archiveDays?: number;
+  isTimeshift?: boolean;
+  onTimeshift?: (minutesAgo: number, variant?: number) => void;
+  onLive?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -239,6 +262,10 @@ function PlayerView({
   const cycleFit = () => setFitIndex((i) => (i + 1) % FIT_MODES.length);
 
   const [showChannelList, setShowChannelList] = useState(false);
+  const [showTimeshift, setShowTimeshift] = useState(false);
+
+  const archiveOn = (archiveDays ?? 0) > 0;
+  const maxMinutes = (archiveDays ?? 0) * 1440;
 
   const items = playlist ?? [];
   const activeIndex = typeof currentIndex === 'number' ? currentIndex : -1;
@@ -805,6 +832,97 @@ const minimizePlayer = async () => {
           </>
         )}
 
+        {isTimeshift && showControls && !locked && (
+          <TouchableOpacity
+            style={[styles.tsBadge, { top: insets.top + 56 }]}
+            onPress={() => onLive?.()}
+          >
+            <Text style={styles.tsBadgeText}>⏪ تسجيل · العودة للمباشر</Text>
+          </TouchableOpacity>
+        )}
+
+        {showTimeshift && (
+          <View style={styles.tsOverlay}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFill}
+              activeOpacity={1}
+              onPress={() => setShowTimeshift(false)}
+            />
+
+            <View
+              style={[
+                styles.tsPanel,
+                { paddingBottom: insets.bottom + 14 },
+              ]}
+            >
+              <View style={styles.drawerHeader}>
+                <Text style={styles.drawerTitle}>
+                  🕐 الرتراباج · متاح {archiveDays} يوم
+                </Text>
+
+                <TouchableOpacity onPress={() => setShowTimeshift(false)}>
+                  <Text style={styles.drawerCloseText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.tsChipRow}>
+                {TIMESHIFT_OPTIONS.filter((o) => o.min <= maxMinutes).map(
+                  (o) => (
+                    <TouchableOpacity
+                      key={o.min}
+                      style={styles.tsChip}
+                      onPress={() => {
+                        onTimeshift?.(o.min);
+                        setShowTimeshift(false);
+                      }}
+                    >
+                      <Text style={styles.tsChipText}>{o.label}</Text>
+                    </TouchableOpacity>
+                  )
+                )}
+              </View>
+
+              {isTimeshift && (
+                <TouchableOpacity
+                  style={styles.tsLiveButton}
+                  onPress={() => {
+                    onLive?.();
+                    setShowTimeshift(false);
+                  }}
+                >
+                  <Text style={styles.tsLiveText}>🔴 العودة للبث المباشر</Text>
+                </TouchableOpacity>
+              )}
+
+              <Text style={styles.tsHint}>
+                إن لم يعمل التسجيل، جرّب الصيغة البديلة:
+              </Text>
+
+              <View style={styles.tsChipRow}>
+                <TouchableOpacity
+                  style={styles.tsAltButton}
+                  onPress={() => {
+                    onTimeshift?.(60, 0);
+                    setShowTimeshift(false);
+                  }}
+                >
+                  <Text style={styles.tsAltText}>صيغة ١ · /timeshift/</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.tsAltButton}
+                  onPress={() => {
+                    onTimeshift?.(60, 1);
+                    setShowTimeshift(false);
+                  }}
+                >
+                  <Text style={styles.tsAltText}>صيغة ٢ · timeshift.php</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
         {showChannelList && (
           <View style={styles.drawerOverlay}>
             <TouchableOpacity
@@ -919,6 +1037,18 @@ const minimizePlayer = async () => {
               onPress={() => setShowChannelList(true)}
             >
               <Text style={styles.controlButtonText}>☰</Text>
+            </TouchableOpacity>
+          )}
+
+          {archiveOn && (
+            <TouchableOpacity
+              style={[
+                styles.controlButton,
+                isTimeshift ? styles.tsButtonActive : styles.drawerToggle,
+              ]}
+              onPress={() => setShowTimeshift(true)}
+            >
+              <Text style={styles.controlButtonText}>🕐</Text>
             </TouchableOpacity>
           )}
 
@@ -1868,6 +1998,8 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     index: number;
     source: 'live' | 'movie' | 'series';
     streamId: string;
+    archiveDays?: number;
+    timeshift?: boolean;
   } | null>(null);
   const [playerMinimized, setPlayerMinimized] = useState(false);
 
@@ -2093,6 +2225,45 @@ return () => {
     }
   }, [credentials, categories]);
 
+  const [tsVariant, setTsVariant] = useState(0);
+
+  function playTimeshift(minutesAgo: number, variant = tsVariant) {
+    if (!credentials || !activeChannel) return;
+    if (activeChannel.source !== 'live') return;
+
+    const start = new Date(Date.now() - minutesAgo * 60000);
+    const duration = Math.min(minutesAgo, 240);
+
+    const url = getTimeshiftUrl(
+      credentials,
+      activeChannel.streamId,
+      start,
+      duration,
+      'ts',
+      variant
+    );
+
+    setTsVariant(variant);
+
+    setActiveChannel({
+      ...activeChannel,
+      url,
+      timeshift: true,
+    });
+  }
+
+  function backToLive() {
+    if (!credentials || !activeChannel) return;
+
+    const url = getStreamUrl(credentials, activeChannel.streamId, 'm3u8');
+
+    setActiveChannel({
+      ...activeChannel,
+      url,
+      timeshift: false,
+    });
+  }
+
   function shiftCategory(delta: number) {
     if (categoryIndex < 0) return;
 
@@ -2100,6 +2271,14 @@ return () => {
     if (next < 0 || next >= categories.length) return;
 
     openCategory(categories[next]);
+  }
+
+  function archiveDaysOf(channel: Channel) {
+    const on = String(channel.tv_archive ?? '0') === '1';
+    if (!on) return 0;
+
+    const d = Number(channel.tv_archive_duration ?? 0);
+    return Number.isFinite(d) && d > 0 ? d : 7;
   }
 
   function playChannelAtIndex(index: number) {
@@ -2114,6 +2293,8 @@ return () => {
       index,
       source: 'live',
       streamId: String(channel.stream_id),
+      archiveDays: archiveDaysOf(channel),
+      timeshift: false,
     });
 
     rememberWatched(channel, 'live');
@@ -2134,6 +2315,8 @@ return () => {
       index,
       source: 'live',
       streamId: String(channel.stream_id),
+      archiveDays: archiveDaysOf(channel),
+      timeshift: false,
     });
     setPlayerMinimized(false);
 
@@ -2548,6 +2731,14 @@ return () => {
             playlist={currentPlaylist(activeChannel!.source)}
             currentIndex={activeChannel!.index}
             onSelectIndex={(i) => playAtIndex(i, activeChannel!.source)}
+            archiveDays={
+              activeChannel!.source === 'live'
+                ? activeChannel!.archiveDays ?? 0
+                : 0
+            }
+            isTimeshift={!!activeChannel!.timeshift}
+            onTimeshift={(min, variant) => playTimeshift(min, variant)}
+            onLive={backToLive}
           />
         </View>
       ) : (
@@ -2674,7 +2865,18 @@ return () => {
 
                 <TouchableOpacity
                   style={styles.dashboardCardTiny}
-                  onPress={() => Alert.alert('قريبًا 🔜', 'ميزة الرتراباج قيد التطوير')}
+                  onPress={() => {
+                    const has = channels.some(
+                      (c) => String(c.tv_archive ?? '0') === '1'
+                    );
+
+                    Alert.alert(
+                      has ? '🕐 الرتراباج' : 'غير مدعوم',
+                      has
+                        ? 'افتح أي قناة تدعم التسجيل، ثم اضغط زر 🕐 داخل المشغّل.'
+                        : 'مزوّد الخدمة الحالي لا يوفّر خاصية التسجيل على أي قناة.'
+                    );
+                  }}
                 >
                   <Text style={styles.dashboardCardTinyIcon}>🕐</Text>
                   <Text style={styles.dashboardCardTinyText}>رتراباج</Text>
@@ -3941,6 +4143,80 @@ const styles = StyleSheet.create({
   epgRowTitle: { color: '#c7d3e3', fontSize: 12, marginTop: 2 },
 
   epgRowLiveText: { color: '#fff' },
+
+  tsButtonActive: { backgroundColor: 'rgba(255,30,39,0.85)' },
+
+  tsBadge: {
+    position: 'absolute',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(255,30,39,0.9)',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 16,
+    zIndex: 38,
+    elevation: 38,
+  },
+
+  tsBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+
+  tsOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+    zIndex: 46,
+    elevation: 46,
+  },
+
+  tsPanel: {
+    backgroundColor: '#0b1220',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+  },
+
+  tsChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+
+  tsChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 18,
+    backgroundColor: '#1b2639',
+    borderWidth: 1,
+    borderColor: '#2b3850',
+  },
+
+  tsChipText: { color: '#e6ecf5', fontSize: 13, fontWeight: '600' },
+
+  tsLiveButton: {
+    marginTop: 14,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#ff1e27',
+    alignItems: 'center',
+  },
+
+  tsLiveText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
+
+  tsHint: { color: '#7f8da3', fontSize: 11, marginTop: 16 },
+
+  tsAltButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#26344d',
+  },
+
+  tsAltText: { color: '#c7d3e3', fontSize: 11 },
 
   multiHeader: {
     minHeight: 56,
