@@ -288,10 +288,50 @@ const currentBrightness = useRef(0.5);
 
   const [videoStatus, setVideoStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [videoError, setVideoError] = useState<string | null>(null);
-  const streamRetried = useRef(false);
+  const retryCount = useRef(0);
+
+  const buildFallbackUrl = (url: string, attempt: number) => {
+    const m = url.match(/\.([a-z0-9]+)(\?.*)?$/i);
+    if (!m) return null;
+
+    const ext = m[1].toLowerCase();
+    const query = m[2] || '';
+
+    const chains: Record<string, string[]> = {
+      m3u8: ['ts', 'mp4'],
+      ts: ['m3u8'],
+      mp4: ['mkv', 'avi', 'm3u8'],
+      mkv: ['mp4', 'avi'],
+      avi: ['mp4', 'mkv'],
+    };
+
+    const list = chains[ext];
+    if (!list || attempt >= list.length) return null;
+
+    return url.replace(/\.[a-z0-9]+(\?.*)?$/i, '.' + list[attempt] + query);
+  };
+
+  const humanizeError = (raw: string) => {
+    if (/CLEARTEXT/i.test(raw)) {
+      return 'تعذر الاتصال بالسيرفر (حظر شبكي).';
+    }
+    if (/extractors|NoDeclaredBrand|Malformed/i.test(raw)) {
+      return 'صيغة الملف غير مدعومة أو الرابط غير صالح لهذه الحلقة.';
+    }
+    if (/403|Forbidden/i.test(raw)) {
+      return 'الوصول مرفوض — قد يكون الاشتراك منتهيًا أو الجهاز محظورًا.';
+    }
+    if (/404|Not Found/i.test(raw)) {
+      return 'المحتوى غير موجود على السيرفر.';
+    }
+    if (/timeout|timed out|Unable to connect/i.test(raw)) {
+      return 'انتهت مهلة الاتصال — تحقق من الإنترنت.';
+    }
+    return raw || 'تعذر تشغيل المحتوى';
+  };
 
   useEffect(() => {
-    streamRetried.current = false;
+    retryCount.current = 0;
     setVideoStatus('loading');
     setVideoError(null);
 
@@ -309,33 +349,27 @@ const currentBrightness = useRef(0.5);
 
       if (event.status === 'error') {
         const raw = event.error?.message || '';
-        const isCleartextError = /CLEARTEXT/i.test(raw);
+        const fatal = /CLEARTEXT/i.test(raw);
+        const next = fatal ? null : buildFallbackUrl(streamUrl, retryCount.current);
 
-        const message = isCleartextError
-          ? 'تعذر الاتصال بالسيرفر (حظر شبكي). جرّب قناة أخرى أو تحقق من الاشتراك.'
-          : raw || 'تعذر تشغيل البث';
-
-        if (
-          !isCleartextError &&
-          !streamRetried.current &&
-          /\.m3u8(?=\?|$)/i.test(streamUrl)
-        ) {
-          streamRetried.current = true;
+        if (next) {
+          retryCount.current += 1;
           setVideoStatus('loading');
-          setVideoError('تعذر تشغيل البث، جارٍ تجربة صيغة بديلة...');
+          setVideoError('الصيغة غير مدعومة، جارٍ تجربة بديل...');
 
-          const fallbackUrl = streamUrl.replace(
-            /\.m3u8(\?.*)?$/i,
-            '.ts$1'
-          );
+          try {
+            player.replace({ uri: next });
+            player.play();
+          } catch {
+            setVideoStatus('error');
+            setVideoError(humanizeError(raw));
+          }
 
-          player.replace({ uri: fallbackUrl });
-          player.play();
           return;
         }
 
         setVideoStatus('error');
-        setVideoError(message);
+        setVideoError(humanizeError(raw));
       }
     });
 
@@ -592,7 +626,7 @@ const minimizePlayer = async () => {
             <TouchableOpacity
               style={styles.videoRetryButton}
               onPress={() => {
-                streamRetried.current = false;
+                retryCount.current = 0;
                 setVideoStatus('loading');
                 setVideoError(null);
                 player.replace({ uri: streamUrl });
@@ -609,7 +643,7 @@ const minimizePlayer = async () => {
           <View style={StyleSheet.absoluteFill} />
         </GestureDetector>
 
-        {indicator && (
+        {indicator && !fullscreen && (
           <View
             style={[
               styles.gestureIndicator,
@@ -655,6 +689,13 @@ const minimizePlayer = async () => {
               </Text>
             </TouchableOpacity>
 
+            <TouchableOpacity
+              style={styles.fsTopButton}
+              onPress={toggleFullscreen}
+            >
+              <Text style={styles.fsTopButtonText}>⤡</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity style={styles.fsTopButton} onPress={toggleLock}>
               <Text style={styles.fsTopButtonText}>🔓</Text>
             </TouchableOpacity>
@@ -670,7 +711,7 @@ const minimizePlayer = async () => {
           </TouchableOpacity>
         )}
 
-        {showControls && !locked && (
+        {showControls && !locked && !fullscreen && (
           <TouchableOpacity
             style={[
               styles.fullscreenButton,
@@ -1809,9 +1850,12 @@ return () => {
       keys.forEach((key) => {
         map[key] = (raw[key] || []).map((ep: any) => ({
           stream_id: ep.id,
-          name: `E${ep.episode_num} · ${ep.title || ''}`.trim(),
+          name:
+            String(ep.title || '').trim() ||
+            `الحلقة ${ep.episode_num}`,
           stream_icon: ep.info?.movie_image,
-          container_extension: ep.container_extension,
+          container_extension:
+            ep.container_extension || ep.info?.container_extension || 'mkv',
         }));
       });
 
@@ -3144,8 +3188,8 @@ const styles = StyleSheet.create({
   },
 
   fsTopButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     borderRadius: 8,
     backgroundColor: 'rgba(255,255,255,0.12)',
     marginHorizontal: 4,
@@ -3156,7 +3200,7 @@ const styles = StyleSheet.create({
   fsTitle: {
     flex: 1,
     color: '#fff',
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: 'bold',
     marginHorizontal: 8,
   },
