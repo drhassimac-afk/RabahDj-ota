@@ -289,6 +289,7 @@ const currentBrightness = useRef(0.5);
   const [videoStatus, setVideoStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [videoError, setVideoError] = useState<string | null>(null);
   const retryCount = useRef(0);
+  const emptyRef = useRef(false);
 
   const buildFallbackUrl = (url: string, attempt: number) => {
     const m = url.match(/\.([a-z0-9]+)(\?.*)?$/i);
@@ -312,6 +313,9 @@ const currentBrightness = useRef(0.5);
   };
 
   const humanizeError = (raw: string) => {
+    if (emptyRef.current) {
+      return 'المحتوى غير متاح حالياً عند المزوّد (الملف فارغ).';
+    }
     if (/CLEARTEXT/i.test(raw)) {
       return 'تعذر الاتصال بالسيرفر (حظر شبكي).';
     }
@@ -332,6 +336,7 @@ const currentBrightness = useRef(0.5);
 
   useEffect(() => {
     retryCount.current = 0;
+    emptyRef.current = false;
     setVideoStatus('loading');
     setVideoError(null);
 
@@ -349,6 +354,16 @@ const currentBrightness = useRef(0.5);
 
       if (event.status === 'error') {
         const raw = event.error?.message || '';
+        fetch(streamUrl, { headers: { Range: 'bytes=0-1' } })
+          .then((r) => r.arrayBuffer())
+          .then((buf) => {
+            if (buf.byteLength === 0) {
+              emptyRef.current = true;
+              setVideoStatus('error');
+              setVideoError('المحتوى غير متاح حالياً عند المزوّد (الملف فارغ).');
+            }
+          })
+          .catch(() => {});
         const fatal = /CLEARTEXT/i.test(raw);
         const next = fatal ? null : buildFallbackUrl(streamUrl, retryCount.current);
 
@@ -1890,6 +1905,9 @@ return () => {
       ep.stream_id,
       ep.container_extension || 'mp4'
     );
+
+    console.log('EPISODE_URL =>', url);
+    console.log('EPISODE_RAW =>', JSON.stringify(ep));
 
     setActiveChannel({
       url,
