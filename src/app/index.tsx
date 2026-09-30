@@ -5,6 +5,9 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, PermissionsAndroid, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import HtmlHost, { type HtmlHostHandle } from '@/components/html-host';
 import { usePttRecorder } from '@/hooks/use-ptt-recorder';
 import { RABAHDJ_HTML } from '../htmlContent';
@@ -25,6 +28,90 @@ import AdminBroadcastModal from '@/components/admin-broadcast-modal';
 import AdminNative, { type AdminStats } from '@/components/admin-native';
 import { checkAdminLogin, changeAdminCredentials } from '@/lib/admin-auth';
 import * as Sentry from '@sentry/react-native';
+
+// ============================================================
+// بطاقة الدخول إلى قنوات Rabah المباشرة
+// ============================================================
+function IptvEntryCard({ onPress }: { onPress: () => void }) {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View style={[iptvStyles.wrap, { marginTop: insets.top + 12 }]}>
+      <TouchableOpacity activeOpacity={0.85} onPress={onPress}>
+        <LinearGradient
+          colors={['#dc2626', '#7f1d1d']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={iptvStyles.card}
+        >
+          <View style={iptvStyles.circle}>
+            <Ionicons name="tv" size={24} color="#fff" />
+          </View>
+
+          <View style={iptvStyles.texts}>
+            <Text style={iptvStyles.title}>قنوات Rabah المباشرة</Text>
+            <Text style={iptvStyles.subtitle}>
+              بث مباشر · أفلام · مسلسلات
+            </Text>
+          </View>
+
+          <Ionicons
+            name="chevron-back"
+            size={22}
+            color="rgba(255,255,255,0.85)"
+          />
+        </LinearGradient>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const iptvStyles = StyleSheet.create({
+  wrap: {
+    marginHorizontal: 16,
+    marginBottom: 6,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#dc2626',
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 7,
+  },
+
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 15,
+  },
+
+  circle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  texts: { flex: 1, marginHorizontal: 12 },
+
+  title: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: 'bold',
+    textAlign: 'left',
+  },
+
+  subtitle: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 11,
+    marginTop: 3,
+    textAlign: 'left',
+  },
+});
+
 
 Sentry.init({
   dsn: 'https://bcc2e8f4dbd04961dd25daade30bfeb3@o4512108571066368.ingest.de.sentry.io/4512108585484368',
@@ -867,7 +954,9 @@ function Index() {
 
       {showCinema && (
         <View style={isCinemaPlaying ? styles.overlayTransparent : styles.overlayFill}>
-      <TouchableOpacity style={{backgroundColor:'#ff1e27', padding:14, marginVertical:8, marginHorizontal:16, borderRadius:12, alignItems:'center', flexDirection:'row', justifyContent:'center', shadowColor:'#000', shadowOffset:{width:0,height:2}, shadowOpacity:0.25, shadowRadius:3.84, elevation:5}} onPress={() => setShowYacine(true)}><Text style={{color:'#fff', fontWeight:'bold', fontSize:15, marginRight:8}}>📺</Text><Text style={{color:'#fff', fontWeight:'bold', fontSize:15}}>قنوات المباشرة Rabah</Text></TouchableOpacity>
+      {!isCinemaPlaying && (
+        <IptvEntryCard onPress={() => setShowYacine(true)} />
+      )}
       <CinemaNative
             category={cinemaCategory}
             history={cinemaHistory}

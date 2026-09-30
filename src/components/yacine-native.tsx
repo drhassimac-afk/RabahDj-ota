@@ -22,6 +22,7 @@ import { Image,
   PanResponder,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import {
   SafeAreaProvider,
@@ -1317,6 +1318,32 @@ function PlayerEpgBar({
         </Text>
       )}
     </View>
+  );
+}
+
+function TinyCard({
+  icon,
+  label,
+  colors,
+  onPress,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  colors: [string, string];
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress}>
+      <LinearGradient
+        colors={colors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.dashboardCardTiny}
+      >
+        {icon}
+        <Text style={styles.dashboardCardTinyText}>{label}</Text>
+      </LinearGradient>
+    </TouchableOpacity>
   );
 }
 
@@ -3074,65 +3101,121 @@ return () => {
                 )}
 
                 <TouchableOpacity
-                  style={[styles.dashboardCardLarge, { backgroundColor: '#1f8a5c' }]}
+                  activeOpacity={0.85}
                   onPress={() => setScreen('categories')}
                 >
-                  <MaterialCommunityIcons name="satellite-variant" size={40} color="#fff" style={styles.dashboardCardIcon} />
-                  <Text style={styles.dashboardCardTitle}>TV مباشر</Text>
+                  <LinearGradient
+                    colors={['#16a34a', '#0f766e']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.dashboardCardLarge}
+                  >
+                    <MaterialCommunityIcons
+                      name="satellite-variant"
+                      size={40}
+                      color="#fff"
+                      style={styles.dashboardCardIcon}
+                    />
+                    <Text style={styles.dashboardCardTitle}>TV مباشر</Text>
+                  </LinearGradient>
                 </TouchableOpacity>
 
                 <View style={styles.dashboardRow}>
                   <TouchableOpacity
-                    style={[styles.dashboardCardSmall, { backgroundColor: '#c0392b' }]}
+                    style={{ flex: 1 }}
+                    activeOpacity={0.85}
                     onPress={openMovieCategories}
                   >
-                    <MaterialCommunityIcons name="movie-open" size={34} color="#fff" style={styles.dashboardCardIcon} />
-                    <Text style={styles.dashboardCardTitle}>أفلام</Text>
+                    <LinearGradient
+                      colors={['#dc2626', '#991b1b']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.dashboardCardSmall}
+                    >
+                      <MaterialCommunityIcons
+                        name="movie-open"
+                        size={34}
+                        color="#fff"
+                        style={styles.dashboardCardIcon}
+                      />
+                      <Text style={styles.dashboardCardTitle}>أفلام</Text>
+                    </LinearGradient>
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.dashboardCardSmall, { backgroundColor: '#6c3fa8' }]}
+                    style={{ flex: 1 }}
+                    activeOpacity={0.85}
                     onPress={openSeriesCategories}
                   >
-                    <MaterialCommunityIcons name="television-classic" size={34} color="#fff" style={styles.dashboardCardIcon} />
-                    <Text style={styles.dashboardCardTitle}>مسلسلات</Text>
+                    <LinearGradient
+                      colors={['#7c3aed', '#4c1d95']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.dashboardCardSmall}
+                    >
+                      <MaterialCommunityIcons
+                        name="television-classic"
+                        size={34}
+                        color="#fff"
+                        style={styles.dashboardCardIcon}
+                      />
+                      <Text style={styles.dashboardCardTitle}>مسلسلات</Text>
+                    </LinearGradient>
                   </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity
-                  style={styles.dashboardCardTiny}
+                <TinyCard
+                  colors={['#0f766e', '#115e59']}
+                  label="مباشر مع EPG"
                   onPress={() => setScreen('epg-guide')}
-                >
-                  <Ionicons name="calendar" size={20} color="#fff" style={styles.dashboardCardTinyIcon} />
-                  <Text style={styles.dashboardCardTinyText}>مباشر مع EPG</Text>
-                </TouchableOpacity>
+                  icon={
+                    <Ionicons
+                      name="calendar"
+                      size={20}
+                      color="#fff"
+                      style={styles.dashboardCardTinyIcon}
+                    />
+                  }
+                />
 
-                <TouchableOpacity
-                  style={styles.dashboardCardTiny}
+                <TinyCard
+                  colors={['#0e7490', '#155e75']}
+                  label="شاشات متعددة"
                   onPress={() => setScreen('multiscreen')}
-                >
-                  <MaterialCommunityIcons name="view-grid" size={20} color="#fff" style={styles.dashboardCardTinyIcon} />
-                  <Text style={styles.dashboardCardTinyText}>شاشات متعددة</Text>
-                </TouchableOpacity>
+                  icon={
+                    <MaterialCommunityIcons
+                      name="view-grid"
+                      size={20}
+                      color="#fff"
+                      style={styles.dashboardCardTinyIcon}
+                    />
+                  }
+                />
 
-                <TouchableOpacity
-                  style={styles.dashboardCardTiny}
+                <TinyCard
+                  colors={['#b45309', '#78350f']}
+                  label="رتراباج"
                   onPress={() => {
                     const has = channels.some(
                       (c) => String(c.tv_archive ?? '0') === '1'
                     );
 
                     Alert.alert(
-                      has ? '🕐 الرتراباج' : 'غير مدعوم',
+                      has ? 'الرتراباج' : 'غير مدعوم',
                       has
-                        ? 'افتح أي قناة تدعم التسجيل، ثم اضغط زر 🕐 داخل المشغّل.'
+                        ? 'افتح أي قناة تدعم التسجيل، ثم اضغط زر الساعة داخل المشغّل.'
                         : 'مزوّد الخدمة الحالي لا يوفّر خاصية التسجيل على أي قناة.'
                     );
                   }}
-                >
-                  <Ionicons name="time" size={20} color="#fff" style={styles.dashboardCardTinyIcon} />
-                  <Text style={styles.dashboardCardTinyText}>رتراباج</Text>
-                </TouchableOpacity>
+                  icon={
+                    <Ionicons
+                      name="time"
+                      size={20}
+                      color="#fff"
+                      style={styles.dashboardCardTinyIcon}
+                    />
+                  }
+                />
               </View>
 
               <Text style={styles.dashboardFooter}>متصل: {username}</Text>
