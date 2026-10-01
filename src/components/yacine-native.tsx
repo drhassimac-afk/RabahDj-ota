@@ -104,6 +104,7 @@ type WatchedItem = {
 };
 
 type Screen =
+  | 'entry'
   | 'login'
   | 'dashboard'
   | 'categories'
@@ -2266,7 +2267,7 @@ function EpgGuideView({
 }
 
 export default function YacineNative({ onClose }: YacineNativeProps) {
-  const [screen, setScreen] = useState<Screen>('login');
+  const [screen, setScreen] = useState<Screen>('entry');
   const [credentials, setCredentials] = useState<Credentials | null>(null);
 
   const [server, setServer] = useState('');
@@ -2324,7 +2325,6 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   useEffect(() => {
     ScreenOrientation.unlockAsync().catch(() => {});
 
-    loadSavedCredentials();
     loadFavorites();
     loadLastWatched();
 return () => {
@@ -3257,7 +3257,104 @@ return () => {
           style={styles.container}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          {screen === 'login' && (
+          {screen === 'entry' && (
+        <View style={styles.entryScreen}>
+          <View style={styles.entryHeader}>
+            <Text style={styles.entryTitle}>Rabah مباشر</Text>
+            <Text style={styles.entrySubtitle}>
+              اختر مصدر المشاهدة
+            </Text>
+          </View>
+
+          <View style={styles.entryCards}>
+            <TouchableOpacity
+              style={styles.entryCard}
+              activeOpacity={0.82}
+              onPress={async () => {
+                try {
+                  const saved = await getSavedCredentials();
+
+                  if (saved) {
+                    setServer(saved.server || '');
+                    setUsername(saved.username || '');
+                    setPassword(saved.password || '');
+                    await handleLogin(saved, true);
+                  } else {
+                    setScreen('login');
+                  }
+                } catch {
+                  setScreen('login');
+                }
+              }}
+            >
+              <View style={styles.entryIconCircle}>
+                <Ionicons
+                  name="tv-outline"
+                  size={42}
+                  color="#fff"
+                />
+              </View>
+
+              <Text style={styles.entryCardTitle}>Xtream</Text>
+              <Text style={styles.entryCardSubtitle}>
+                القنوات والأفلام والمسلسلات
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.entryCard}
+              activeOpacity={0.82}
+              onPress={() => setScreen('m3u-sources')}
+            >
+              <View style={styles.entryIconCircle}>
+                <MaterialCommunityIcons
+                  name="web"
+                  size={42}
+                  color="#fff"
+                />
+              </View>
+
+              <Text style={styles.entryCardTitle}>M3U</Text>
+              <Text style={styles.entryCardSubtitle}>
+                قوائم IPTV من الروابط
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.entryCard}
+              activeOpacity={0.82}
+              onPress={() => {
+                setPlaylistTitle('IPTV المحلي');
+                setScreen('local-groups');
+              }}
+            >
+              <View style={styles.entryIconCircle}>
+                <MaterialCommunityIcons
+                  name="access-point"
+                  size={42}
+                  color="#fff"
+                />
+              </View>
+
+              <Text style={styles.entryCardTitle}>IPTV المحلي</Text>
+              <Text style={styles.entryCardSubtitle}>
+                القائمة الموجودة داخل التطبيق
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={styles.entryCloseButton}
+            activeOpacity={0.8}
+            onPress={onClose}
+          >
+            <Ionicons name="close" size={20} color="#fff" />
+            <Text style={styles.entryCloseText}>إغلاق</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {screen === 'login' && (
             <View style={styles.flex}>
               {renderHeader('📺 قنوات المباشرة Rabah')}
 
@@ -4407,6 +4504,96 @@ return () => {
 }
 
 const styles = StyleSheet.create({
+  entryScreen: {
+    flex: 1,
+    paddingHorizontal: 18,
+    paddingTop: 34,
+    paddingBottom: 24,
+    justifyContent: 'center',
+  },
+
+  entryHeader: {
+    alignItems: 'center',
+    marginBottom: 28,
+  },
+
+  entryTitle: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+
+  entrySubtitle: {
+    fontSize: 16,
+    color: '#aaa',
+    textAlign: 'center',
+  },
+
+  entryCards: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'center',
+  },
+
+  entryCard: {
+    flex: 1,
+    minHeight: 190,
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#171717',
+    borderWidth: 1,
+    borderColor: '#303030',
+  },
+
+  entryIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#d71920',
+    marginBottom: 14,
+  },
+
+  entryCardTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 7,
+  },
+
+  entryCardSubtitle: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: '#aaa',
+    textAlign: 'center',
+  },
+
+  entryCloseButton: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginTop: 28,
+    paddingHorizontal: 22,
+    paddingVertical: 11,
+    borderRadius: 14,
+    backgroundColor: '#292929',
+  },
+
+  entryCloseText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
   container: { flex: 1, backgroundColor: '#0b1220' },
   flex: { flex: 1 },
 
