@@ -35,6 +35,13 @@ import * as Brightness from 'expo-brightness';
 import { VolumeManager } from 'react-native-volume-manager';
 
 import {
+  loadIPTVPlaylist,
+  groupIPTVChannels,
+  type IPTVChannel,
+  type IPTVGroup,
+} from '../lib/iptv-playlist';
+
+import {
   login,
   saveCredentials,
   getSavedCredentials,
@@ -100,7 +107,9 @@ type Screen =
   | 'series-list'
   | 'series-detail'
   | 'multiscreen'
-  | 'epg-guide';
+  | 'epg-guide'
+  | 'local-groups'
+  | 'local-channels';
 
 const FAVORITES_STORAGE_KEY = 'rabah_iptv_favorites';
 const LAST_WATCHED_STORAGE_KEY = 'rabah_iptv_last_watched';
@@ -2266,11 +2275,16 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   const [movieSearchQuery, setMovieSearchQuery] = useState('');
   const [selectedMovieCategory, setSelectedMovieCategory] = useState('');
 
+  const [localGroups, setLocalGroups] = useState<IPTVGroup[]>([]);
+  const [localChannels, setLocalChannels] = useState<IPTVChannel[]>([]);
+  const [selectedLocalGroup, setSelectedLocalGroup] = useState('');
+  const [localLoading, setLocalLoading] = useState(false);
+
   const [activeChannel, setActiveChannel] = useState<{
     url: string;
     name: string;
     index: number;
-    source: 'live' | 'movie' | 'series';
+    source: 'live' | 'movie' | 'series' | 'local';
     streamId: string;
     archiveDays?: number;
     timeshift?: boolean;
@@ -2473,6 +2487,26 @@ return () => {
       Alert.alert('خطأ', error?.message || 'تعذر جلب الفئات');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function openLocalIPTV() {
+    try {
+      setLocalLoading(true);
+
+      const data = await loadIPTVPlaylist();
+
+      setLocalChannels(data);
+      setLocalGroups(groupIPTVChannels(data));
+      setSelectedLocalGroup('');
+      setScreen('local-groups');
+    } catch (error: any) {
+      Alert.alert(
+        'IPTV المحلي',
+        error?.message || 'تعذر تحميل قائمة IPTV المحلية'
+      );
+    } finally {
+      setLocalLoading(false);
     }
   }
 
@@ -2772,19 +2806,50 @@ return () => {
     setPlayerMinimized(false);
   }
 
-  function playAtIndex(index: number, source: 'live' | 'movie' | 'series') {
+  function playLocalChannelAtIndex(index: number) {
+    const channel = localChannels[index];
+    if (!channel || !channel.url) return;
+
+    setActiveChannel({
+      url: channel.url,
+      name: channel.name || 'قناة',
+      index,
+      source: 'local',
+      streamId: '',
+      archiveDays: 0,
+      timeshift: false,
+    });
+
+    setPlayerMinimized(false);
+  }
+
+  function playAtIndex(
+    index: number,
+    source: 'live' | 'movie' | 'series' | 'local'
+  ) {
     if (source === 'movie') {
       playMovieAtIndex(index);
     } else if (source === 'series') {
       playEpisodeAtIndex(index);
+    } else if (source === 'local') {
+      playLocalChannelAtIndex(index);
     } else {
       playChannelAtIndex(index);
     }
   }
 
-  function currentPlaylist(source: 'live' | 'movie' | 'series') {
+  function currentPlaylist(
+    source: 'live' | 'movie' | 'series' | 'local'
+  ): Channel[] {
     if (source === 'movie') return movies;
     if (source === 'series') return episodes;
+    if (source === 'local') {
+      return localChannels.map((channel, index) => ({
+        stream_id: 'local-' + index,
+        name: channel.name || 'قناة',
+        stream_icon: channel.logo || '',
+      }));
+    }
     return channels;
   }
 
@@ -2826,6 +2891,16 @@ return () => {
         closePlayer();
         return;
       }
+    if (screen === 'local-channels') {
+      setScreen('local-groups');
+      return;
+    }
+
+    if (screen === 'local-groups') {
+      setScreen('dashboard');
+      return;
+    }
+
     if (screen === 'channels') {
       setScreen('categories');
       return;
@@ -3017,7 +3092,11 @@ return () => {
             }
             isTimeshift={!!activeChannel!.timeshift}
             onTimeshift={(min, variant) => playTimeshift(min, variant)}
-            onLive={backToLive}
+            onLive={() => {
+            if (activeChannel!.source === 'live') {
+              backToLive();
+            }
+          }}
           />
         </View>
       ) : (
@@ -3120,6 +3199,28 @@ return () => {
                   </LinearGradient>
                 </TouchableOpacity>
 
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={openLocalIPTV}
+                >
+                  <LinearGradient
+                    colors={['#2563eb', '#1e3a8a']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.dashboardCardLarge}
+                  >
+                    <MaterialCommunityIcons
+                      name="playlist-play"
+                      size={40}
+                      color="#fff"
+                      style={styles.dashboardCardIcon}
+                    />
+                    <Text style={styles.dashboardCardTitle}>
+                      📡 IPTV المحلي
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+
                 <View style={styles.dashboardRow}>
                   <TouchableOpacity
                     style={{ flex: 1 }}
@@ -3219,6 +3320,145 @@ return () => {
               </View>
 
               <Text style={styles.dashboardFooter}>متصل: {username}</Text>
+            </View>
+          )}
+
+          {screen === 'local-groups' && (
+            <View style={styles.flex}>
+              {renderHeader('📡 IPTV المحلي')}
+
+              {localLoading ? (
+                <View style={styles.center}>
+                  <ActivityIndicator size="large" color="#ff1e27" />
+                  <Text style={styles.loadingText}>
+                    جارٍ تحميل قائمة IPTV...
+                  </Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={localGroups}
+                  keyExtractor={(item, index) => item.name + '-' + index}
+                  contentContainerStyle={styles.list}
+                  removeClippedSubviews={Platform.OS === 'android'}
+                  initialNumToRender={20}
+                  ListEmptyComponent={
+                    <Text style={styles.emptyText}>
+                      لا توجد مجموعات في قائمة IPTV
+                    </Text>
+                  }
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.listItem}
+                      onPress={() => {
+                        setSelectedLocalGroup(item.name);
+                        setScreen('local-channels');
+                      }}
+                    >
+                      <Ionicons
+                        name="folder"
+                        size={24}
+                        color="#60a5fa"
+                        style={styles.itemIconV}
+                      />
+                      <Text style={styles.itemText} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <Text
+                        style={{
+                          color: '#7f8da3',
+                          marginHorizontal: 8,
+                        }}
+                      >
+                        {item.channels.length}
+                      </Text>
+                      <Ionicons
+                        name="chevron-back"
+                        size={20}
+                        color="#9aa8bd"
+                      />
+                    </TouchableOpacity>
+                  )}
+                />
+              )}
+            </View>
+          )}
+
+          {screen === 'local-channels' && (
+            <View style={styles.flex}>
+              {renderHeader(selectedLocalGroup || '📡 القنوات المحلية')}
+
+              <FlatList
+                data={
+                  localGroups.find(
+                    (group) => group.name === selectedLocalGroup
+                  )?.channels || []
+                }
+                keyExtractor={(item, index) => item.url + '-' + index}
+                contentContainerStyle={styles.list}
+                removeClippedSubviews={Platform.OS === 'android'}
+                initialNumToRender={20}
+                maxToRenderPerBatch={15}
+                windowSize={5}
+                ListEmptyComponent={
+                  <Text style={styles.emptyText}>
+                    لا توجد قنوات في هذه المجموعة
+                  </Text>
+                }
+                renderItem={({ item }) => {
+                  const localIndex = localChannels.findIndex(
+                    (channel) => channel.url === item.url
+                  );
+
+                  return (
+                    <TouchableOpacity
+                      style={styles.listItem}
+                      onPress={() => {
+                        if (!item.url) {
+                          Alert.alert('خطأ', 'رابط القناة غير صالح');
+                          return;
+                        }
+
+                        setActiveChannel({
+                          url: item.url,
+                          name: item.name || 'قناة',
+                          index: localIndex,
+                          source: 'local',
+                          streamId: '',
+                          archiveDays: 0,
+                          timeshift: false,
+                        });
+
+                        setPlayerMinimized(false);
+                      }}
+                    >
+                      {item.logo ? (
+                        <Image
+                          source={{ uri: item.logo }}
+                          style={styles.channelLogo}
+                        />
+                      ) : (
+                        <Ionicons
+                          name="tv-outline"
+                          size={24}
+                          color="#60a5fa"
+                          style={styles.itemIconV}
+                        />
+                      )}
+
+                      <Text style={styles.itemText} numberOfLines={2}>
+                        {item.name || 'قناة بدون اسم'}
+                      </Text>
+
+                      <Ionicons
+                        name="play"
+                        size={16}
+                        color="#ff1e27"
+                        style={styles.playIconV}
+                      />
+                    </TouchableOpacity>
+                  );
+                }}
+              />
             </View>
           )}
 
