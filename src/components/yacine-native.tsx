@@ -36,6 +36,7 @@ import { VolumeManager } from 'react-native-volume-manager';
 
 import {
   loadIPTVPlaylist,
+  parseIPTVPlaylist,
   groupIPTVChannels,
   type IPTVChannel,
   type IPTVGroup,
@@ -69,6 +70,12 @@ type Credentials = {
   server: string;
   username: string;
   password: string;
+};
+
+type M3USource = {
+  id: string;
+  name: string;
+  url: string;
 };
 
 type CategoryItem = {
@@ -109,10 +116,13 @@ type Screen =
   | 'multiscreen'
   | 'epg-guide'
   | 'local-groups'
-  | 'local-channels';
+  | 'local-channels'
+  | 'm3u-sources'
+  | 'm3u-add';
 
 const FAVORITES_STORAGE_KEY = 'rabah_iptv_favorites';
 const LAST_WATCHED_STORAGE_KEY = 'rabah_iptv_last_watched';
+const M3U_SOURCES_STORAGE_KEY = 'rabah_iptv_m3u_sources';
 
 const DRAWER_ITEM_HEIGHT = 58;
 
@@ -2279,6 +2289,10 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   const [localChannels, setLocalChannels] = useState<IPTVChannel[]>([]);
   const [selectedLocalGroup, setSelectedLocalGroup] = useState('');
   const [localLoading, setLocalLoading] = useState(false);
+  const [playlistTitle, setPlaylistTitle] = useState('IPTV المحلي');
+  const [m3uSources, setM3USources] = useState<M3USource[]>([]);
+  const [m3uName, setM3UName] = useState('');
+  const [m3uUrl, setM3UUrl] = useState('');
 
   const [activeChannel, setActiveChannel] = useState<{
     url: string;
@@ -2490,6 +2504,32 @@ return () => {
     }
   }
 
+  async function loadSavedM3USources() {
+    try {
+      const raw = await AsyncStorage.getItem(M3U_SOURCES_STORAGE_KEY);
+      if (!raw) {
+        setM3USources([]);
+        return [];
+      }
+
+      const parsed = JSON.parse(raw);
+      const sources = Array.isArray(parsed) ? parsed : [];
+      setM3USources(sources);
+      return sources;
+    } catch {
+      setM3USources([]);
+      return [];
+    }
+  }
+
+  async function saveM3USources(sources: M3USource[]) {
+    setM3USources(sources);
+    await AsyncStorage.setItem(
+      M3U_SOURCES_STORAGE_KEY,
+      JSON.stringify(sources)
+    );
+  }
+
   async function openLocalIPTV() {
     try {
       setLocalLoading(true);
@@ -2499,11 +2539,114 @@ return () => {
       setLocalChannels(data);
       setLocalGroups(groupIPTVChannels(data));
       setSelectedLocalGroup('');
+      setPlaylistTitle('IPTV المحلي');
       setScreen('local-groups');
     } catch (error: any) {
       Alert.alert(
         'IPTV المحلي',
         error?.message || 'تعذر تحميل قائمة IPTV المحلية'
+      );
+    } finally {
+      setLocalLoading(false);
+    }
+  }
+
+  async function openM3USources() {
+    await loadSavedM3USources();
+    setScreen('m3u-sources');
+  }
+
+  async function addM3USource() {
+    const name = m3uName.trim();
+    const url = m3uUrl.trim();
+
+    if (!name) {
+      Alert.alert('M3U', 'اكتب اسمًا للقائمة');
+      return;
+    }
+
+    if (!/^https?:\/\//i.test(url)) {
+      Alert.alert('M3U', 'رابط M3U يجب أن يبدأ بـ http:// أو https://');
+      return;
+    }
+
+    try {
+      const sources = await loadSavedM3USources();
+
+      const source: M3USource = {
+        id: Date.now().toString(),
+        name,
+        url,
+      };
+
+      await saveM3USources([...sources, source]);
+
+      setM3UName('');
+      setM3UUrl('');
+      setScreen('m3u-sources');
+
+      Alert.alert('تم', 'تم حفظ قائمة M3U');
+    } catch (error: any) {
+      Alert.alert(
+        'خطأ',
+        error?.message || 'تعذر حفظ قائمة M3U'
+      );
+    }
+  }
+
+  async function deleteM3USource(source: M3USource) {
+    Alert.alert(
+      'حذف القائمة',
+      `هل تريد حذف "${source.name}"؟`,
+      [
+        { text: 'إلغاء', style: 'cancel' },
+        {
+          text: 'حذف',
+          style: 'destructive',
+          onPress: async () => {
+            const sources = await loadSavedM3USources();
+            await saveM3USources(
+              sources.filter((item: M3USource) => item.id !== source.id)
+            );
+          },
+        },
+      ]
+    );
+  }
+
+  async function loadM3USource(source: M3USource) {
+    try {
+      setLocalLoading(true);
+
+      const response = await fetch(source.url);
+
+      if (!response.ok) {
+        throw new Error(
+          `HTTP ${response.status}`
+        );
+      }
+
+      const content = await response.text();
+
+      if (!content.trim()) {
+        throw new Error('ملف M3U فارغ');
+      }
+
+      const data = parseIPTVPlaylist(content);
+
+      if (!data.length) {
+        throw new Error('لم يتم العثور على قنوات داخل ملف M3U');
+      }
+
+      setLocalChannels(data);
+      setLocalGroups(groupIPTVChannels(data));
+      setSelectedLocalGroup('');
+      setPlaylistTitle(source.name);
+      setScreen('local-groups');
+    } catch (error: any) {
+      Alert.alert(
+        'تعذر تحميل M3U',
+        error?.message || 'تأكد من الرابط وأن ملف M3U صالح'
       );
     } finally {
       setLocalLoading(false);
@@ -2901,6 +3044,16 @@ return () => {
       return;
     }
 
+    if (screen === 'm3u-add') {
+      setScreen('m3u-sources');
+      return;
+    }
+
+    if (screen === 'm3u-sources') {
+      setScreen('dashboard');
+      return;
+    }
+
     if (screen === 'channels') {
       setScreen('categories');
       return;
@@ -3221,6 +3374,28 @@ return () => {
                   </LinearGradient>
                 </TouchableOpacity>
 
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={openM3USources}
+                >
+                  <LinearGradient
+                    colors={['#7c3aed', '#4c1d95']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.dashboardCardLarge}
+                  >
+                    <MaterialCommunityIcons
+                      name="link-variant"
+                      size={40}
+                      color="#fff"
+                      style={styles.dashboardCardIcon}
+                    />
+                    <Text style={styles.dashboardCardTitle}>
+                      🌐 قوائم M3U
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+
                 <View style={styles.dashboardRow}>
                   <TouchableOpacity
                     style={{ flex: 1 }}
@@ -3323,9 +3498,271 @@ return () => {
             </View>
           )}
 
+          {screen === 'm3u-add' && (
+            <View style={styles.flex}>
+              {renderHeader('➕ إضافة قائمة M3U')}
+
+              <View
+                style={{
+                  padding: 16,
+                  gap: 12,
+                }}
+              >
+                <Text
+                  style={{
+                    color: '#fff',
+                    fontSize: 16,
+                    fontWeight: '700',
+                  }}
+                >
+                  اسم القائمة
+                </Text>
+
+                <TextInput
+                  value={m3uName}
+                  onChangeText={setM3UName}
+                  placeholder="مثال: قائمتي الرياضية"
+                  placeholderTextColor="#718096"
+                  style={{
+                    backgroundColor: '#172033',
+                    color: '#fff',
+                    borderRadius: 12,
+                    paddingHorizontal: 14,
+                    paddingVertical: 13,
+                    borderWidth: 1,
+                    borderColor: '#263550',
+                    textAlign: 'right',
+                  }}
+                />
+
+                <Text
+                  style={{
+                    color: '#fff',
+                    fontSize: 16,
+                    fontWeight: '700',
+                    marginTop: 4,
+                  }}
+                >
+                  رابط M3U
+                </Text>
+
+                <TextInput
+                  value={m3uUrl}
+                  onChangeText={setM3UUrl}
+                  placeholder="https://example.com/playlist.m3u"
+                  placeholderTextColor="#718096"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  style={{
+                    backgroundColor: '#172033',
+                    color: '#fff',
+                    borderRadius: 12,
+                    paddingHorizontal: 14,
+                    paddingVertical: 13,
+                    borderWidth: 1,
+                    borderColor: '#263550',
+                    textAlign: 'left',
+                  }}
+                />
+
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={addM3USource}
+                  style={{
+                    marginTop: 8,
+                    backgroundColor: '#7c3aed',
+                    borderRadius: 12,
+                    paddingVertical: 14,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: '#fff',
+                      fontSize: 16,
+                      fontWeight: '800',
+                    }}
+                  >
+                    حفظ القائمة
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {screen === 'm3u-sources' && (
+            <View style={styles.flex}>
+              {renderHeader('🌐 قوائم M3U')}
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setScreen('m3u-add')}
+                style={{
+                  marginHorizontal: 12,
+                  marginTop: 10,
+                  marginBottom: 8,
+                  padding: 15,
+                  borderRadius: 12,
+                  backgroundColor: '#172033',
+                  borderWidth: 1,
+                  borderColor: '#7c3aed',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                }}
+              >
+                <Ionicons
+                  name="add-circle"
+                  size={24}
+                  color="#a78bfa"
+                />
+                <Text
+                  style={{
+                    color: '#fff',
+                    fontSize: 15,
+                    fontWeight: '800',
+                    marginHorizontal: 10,
+                  }}
+                >
+                  إضافة رابط M3U
+                </Text>
+              </TouchableOpacity>
+
+              <FlatList
+                data={m3uSources}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.list}
+                ListEmptyComponent={
+                  <Text style={styles.emptyText}>
+                    لا توجد قوائم M3U محفوظة
+                  </Text>
+                }
+                renderItem={({ item }) => (
+                  <View
+                    style={{
+                      backgroundColor: '#172033',
+                      marginHorizontal: 12,
+                      marginVertical: 5,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#263550',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={() => loadM3USource(item)}
+                      style={{
+                        padding: 14,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Ionicons
+                        name="list"
+                        size={24}
+                        color="#a78bfa"
+                      />
+
+                      <View
+                        style={{
+                          flex: 1,
+                          marginHorizontal: 10,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: '#fff',
+                            fontSize: 15,
+                            fontWeight: '800',
+                            textAlign: 'right',
+                          }}
+                          numberOfLines={1}
+                        >
+                          {item.name}
+                        </Text>
+
+                        <Text
+                          style={{
+                            color: '#718096',
+                            fontSize: 11,
+                            marginTop: 4,
+                            textAlign: 'right',
+                          }}
+                          numberOfLines={1}
+                        >
+                          {item.url}
+                        </Text>
+                      </View>
+
+                      <Ionicons
+                        name="play-circle"
+                        size={24}
+                        color="#22c55e"
+                      />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => deleteM3USource(item)}
+                      style={{
+                        borderTopWidth: 1,
+                        borderTopColor: '#263550',
+                        paddingVertical: 9,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: '#ef4444',
+                          fontSize: 13,
+                          fontWeight: '700',
+                        }}
+                      >
+                        حذف
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              />
+            </View>
+          )}
+
           {screen === 'local-groups' && (
             <View style={styles.flex}>
-              {renderHeader('📡 IPTV المحلي')}
+              {renderHeader(playlistTitle)}
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={{
+                  marginHorizontal: 12,
+                  marginTop: 8,
+                  marginBottom: 4,
+                  padding: 14,
+                  borderRadius: 12,
+                  backgroundColor: '#172033',
+                  borderWidth: 1,
+                  borderColor: '#263550',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                }}
+                onPress={openM3USources}
+              >
+                <Ionicons
+                  name="link"
+                  size={22}
+                  color="#a78bfa"
+                />
+                <Text
+                  style={{
+                    color: '#fff',
+                    fontSize: 15,
+                    fontWeight: '700',
+                    marginHorizontal: 10,
+                  }}
+                >
+                  إدارة قوائم M3U
+                </Text>
+              </TouchableOpacity>
 
               {localLoading ? (
                 <View style={styles.center}>
