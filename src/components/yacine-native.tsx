@@ -3449,49 +3449,7 @@ return () => {
                   </LinearGradient>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  onPress={openLocalIPTV}
-                >
-                  <LinearGradient
-                    colors={['#2563eb', '#1e3a8a']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.dashboardCardLarge}
-                  >
-                    <MaterialCommunityIcons
-                      name="playlist-play"
-                      size={40}
-                      color="#fff"
-                      style={styles.dashboardCardIcon}
-                    />
-                    <Text style={styles.dashboardCardTitle}>
-                      📡 IPTV المحلي
-                    </Text>
-                  </LinearGradient>
-                </TouchableOpacity>
 
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  onPress={openM3USources}
-                >
-                  <LinearGradient
-                    colors={['#7c3aed', '#4c1d95']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.dashboardCardLarge}
-                  >
-                    <MaterialCommunityIcons
-                      name="link-variant"
-                      size={40}
-                      color="#fff"
-                      style={styles.dashboardCardIcon}
-                    />
-                    <Text style={styles.dashboardCardTitle}>
-                      🌐 قوائم M3U
-                    </Text>
-                  </LinearGradient>
-                </TouchableOpacity>
 
                 <View style={styles.dashboardRow}>
                   <TouchableOpacity
