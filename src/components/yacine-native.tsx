@@ -35,12 +35,16 @@ import * as Brightness from 'expo-brightness';
 import { VolumeManager } from 'react-native-volume-manager';
 
 import {
-  loadIPTVPlaylist,
-  parseIPTVPlaylist,
+  loadIPTVPlaylistWithMeta,
+  parseIPTVPlaylistWithMeta,
   groupIPTVChannels,
   type IPTVChannel,
   type IPTVGroup,
 } from '../lib/iptv-playlist';
+
+import {
+  getCurrentProgramme,
+} from '../lib/iptv-epg';
 
 import {
   login,
@@ -2266,6 +2270,66 @@ function EpgGuideView({
   );
 }
 
+function IPTVCurrentEpg({
+  epgUrls,
+  tvgId,
+}: {
+  epgUrls: string[];
+  tvgId?: string;
+}) {
+  const [title, setTitle] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!tvgId || !epgUrls.length) {
+      setTitle('');
+      return;
+    }
+
+    setTitle('');
+
+    getCurrentProgramme(
+      epgUrls,
+      tvgId
+    )
+      .then((programme) => {
+        if (cancelled) return;
+
+        setTitle(
+          programme?.title?.trim() || ''
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTitle('');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [epgUrls, tvgId]);
+
+  if (!title) {
+    return null;
+  }
+
+  return (
+    <Text
+      numberOfLines={1}
+      style={{
+        color: '#9ca3af',
+        fontSize: 11,
+        marginTop: 3,
+        marginRight: 4,
+      }}
+    >
+      🔴 الآن: {title}
+    </Text>
+  );
+}
+
 export default function YacineNative({ onClose }: YacineNativeProps) {
   const [screen, setScreen] = useState<Screen>('entry');
   const [credentials, setCredentials] = useState<Credentials | null>(null);
@@ -2290,6 +2354,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   const [localChannels, setLocalChannels] = useState<IPTVChannel[]>([]);
   const [selectedLocalGroup, setSelectedLocalGroup] = useState('');
   const [localLoading, setLocalLoading] = useState(false);
+  const [iptvEpgUrls, setIptvEpgUrls] = useState<string[]>([]);
   const [playlistTitle, setPlaylistTitle] = useState('IPTV المحلي');
   const [m3uSources, setM3USources] = useState<M3USource[]>([]);
   const [m3uName, setM3UName] = useState('');
@@ -2534,17 +2599,33 @@ return () => {
     try {
       setLocalLoading(true);
 
-      const data = await loadIPTVPlaylist();
+      const playlist =
+        await loadIPTVPlaylistWithMeta();
 
-      setLocalChannels(data);
-      setLocalGroups(groupIPTVChannels(data));
+      setLocalChannels(
+        playlist.channels
+      );
+
+      setLocalGroups(
+        groupIPTVChannels(
+          playlist.channels
+        )
+      );
+
+      setIptvEpgUrls(
+        playlist.epgUrls
+      );
+
       setSelectedLocalGroup('');
       setPlaylistTitle('IPTV المحلي');
       setScreen('local-groups');
     } catch (error: any) {
+      setIptvEpgUrls([]);
+
       Alert.alert(
         'IPTV المحلي',
-        error?.message || 'تعذر تحميل قائمة IPTV المحلية'
+        error?.message ||
+          'تعذر تحميل قائمة IPTV المحلية'
       );
     } finally {
       setLocalLoading(false);
@@ -2632,14 +2713,31 @@ return () => {
         throw new Error('ملف M3U فارغ');
       }
 
-      const data = parseIPTVPlaylist(content);
+      const playlist =
+        parseIPTVPlaylistWithMeta(
+          content
+        );
 
-      if (!data.length) {
-        throw new Error('لم يتم العثور على قنوات داخل ملف M3U');
+      if (!playlist.channels.length) {
+        throw new Error(
+          'لم يتم العثور على قنوات داخل ملف M3U'
+        );
       }
 
-      setLocalChannels(data);
-      setLocalGroups(groupIPTVChannels(data));
+      setLocalChannels(
+        playlist.channels
+      );
+
+      setLocalGroups(
+        groupIPTVChannels(
+          playlist.channels
+        )
+      );
+
+      setIptvEpgUrls(
+        playlist.epgUrls
+      );
+
       setSelectedLocalGroup('');
       setPlaylistTitle(source.name);
       setScreen('local-groups');
@@ -3040,7 +3138,7 @@ return () => {
     }
 
     if (screen === 'local-groups') {
-      setScreen('dashboard');
+      setScreen('entry');
       return;
     }
 
@@ -3050,7 +3148,7 @@ return () => {
     }
 
     if (screen === 'm3u-sources') {
-      setScreen('dashboard');
+      setScreen('entry');
       return;
     }
 
@@ -3323,10 +3421,7 @@ return () => {
             <TouchableOpacity
               style={styles.entryCard}
               activeOpacity={0.82}
-              onPress={() => {
-                setPlaylistTitle('IPTV المحلي');
-                setScreen('local-groups');
-              }}
+              onPress={openLocalIPTV}
             >
               <View style={styles.entryIconCircle}>
                 <MaterialCommunityIcons
@@ -3937,9 +4032,24 @@ return () => {
                         />
                       )}
 
-                      <Text style={styles.itemText} numberOfLines={2}>
-                        {item.name || 'قناة بدون اسم'}
-                      </Text>
+                      <View
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                        }}
+                      >
+                        <Text
+                          style={styles.itemText}
+                          numberOfLines={2}
+                        >
+                          {item.name || 'قناة بدون اسم'}
+                        </Text>
+
+                        <IPTVCurrentEpg
+                          epgUrls={iptvEpgUrls}
+                          tvgId={item.tvgId}
+                        />
+                      </View>
 
                       <Ionicons
                         name="play"
