@@ -28,6 +28,7 @@ import AdminBroadcastModal from '@/components/admin-broadcast-modal';
 import AdminNative, { type AdminStats } from '@/components/admin-native';
 import { checkAdminLogin, changeAdminCredentials } from '@/lib/admin-auth';
 import * as Sentry from '@sentry/react-native';
+import { loadIPTVPlaylist } from '@/lib/iptv-playlist';
 
 // ============================================================
 // بطاقة الدخول إلى قنوات Rabah المباشرة
@@ -667,6 +668,17 @@ function Index() {
     }
 
     requestPerms();
+
+    loadIPTVPlaylist()
+      .then((channels) => {
+        console.log('IPTV PLAYLIST TEST OK');
+        console.log('IPTV القنوات:', channels.length);
+        console.log('IPTV أول قناة:', channels[0]?.name);
+        console.log('IPTV أول مجموعة:', channels[0]?.group);
+      })
+      .catch((error) => {
+        console.error('IPTV PLAYLIST TEST ERROR:', error);
+      });
   }, []);
 
   const showNativeNotification = useCallback(
