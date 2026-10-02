@@ -299,7 +299,7 @@ function PlayerView({
   const [showTimeshift, setShowTimeshift] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
 
-  const guideOn = !!(epgTvgId && epgUrls && epgUrls.length > 0);
+  const guideOn = false;
 
   const archiveOn = (archiveDays ?? 0) > 0;
   const maxMinutes = (archiveDays ?? 0) * 1440;
