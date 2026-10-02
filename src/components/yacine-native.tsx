@@ -2597,6 +2597,10 @@ return () => {
 
   async function openLocalIPTV() {
     try {
+      // لا نسمح ببقاء حالة مشغل قديمة عند الدخول إلى IPTV المحلي
+      setActiveChannel(null);
+      setPlayerMinimized(false);
+
       setLocalLoading(true);
 
       const playlist =
@@ -2633,6 +2637,8 @@ return () => {
   }
 
   async function openM3USources() {
+    setActiveChannel(null);
+    setPlayerMinimized(false);
     await loadSavedM3USources();
     setScreen('m3u-sources');
   }
@@ -3128,10 +3134,7 @@ return () => {
   }
 
   function goBack() {
-      if (activeChannel) {
-        closePlayer();
-        return;
-      }
+    // IPTV المحلي
     if (screen === 'local-channels') {
       setScreen('local-groups');
       return;
@@ -3142,6 +3145,7 @@ return () => {
       return;
     }
 
+    // M3U
     if (screen === 'm3u-add') {
       setScreen('m3u-sources');
       return;
@@ -3152,43 +3156,64 @@ return () => {
       return;
     }
 
+    // Xtream
     if (screen === 'channels') {
       setScreen('categories');
       return;
     }
-      if (screen === 'epg-guide') {
-        setScreen('dashboard');
-        return;
-      }
 
-      if (screen === 'multiscreen') {
-        setScreen('dashboard');
-        return;
-      }
-
-      if (screen === 'series-detail') {
-        setScreen('series-list');
-        return;
-      }
-
-      if (screen === 'series-list') {
-        setScreen('series-categories');
-        return;
-      }
-
-      if (screen === 'series-categories') {
-        setScreen('dashboard');
-        return;
-      }
-
-      if (screen === 'movies-list') {
-      setScreen('movies-categories');
-      return;
-    }
-    if (screen === 'categories' || screen === 'movies-categories') {
+    if (screen === 'categories') {
       setScreen('dashboard');
       return;
     }
+
+    if (screen === 'movies-list') {
+      setScreen('movies-categories');
+      return;
+    }
+
+    if (screen === 'movies-categories') {
+      setScreen('dashboard');
+      return;
+    }
+
+    if (screen === 'series-detail') {
+      setScreen('series-list');
+      return;
+    }
+
+    if (screen === 'series-list') {
+      setScreen('series-categories');
+      return;
+    }
+
+    if (screen === 'series-categories') {
+      setScreen('dashboard');
+      return;
+    }
+
+    if (screen === 'epg-guide') {
+      setScreen('dashboard');
+      return;
+    }
+
+    if (screen === 'multiscreen') {
+      setScreen('dashboard');
+      return;
+    }
+
+    if (screen === 'dashboard') {
+      setScreen('entry');
+      return;
+    }
+
+    // مشغل الفيديو: الرجوع من المشغل يغلقه
+    if (activeChannel) {
+      closePlayer();
+      return;
+    }
+
+    // فقط عند شاشة الدخول/الجذر
     onClose();
   }
 
