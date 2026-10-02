@@ -92,6 +92,7 @@ type Channel = {
   name: string;
   stream_icon?: string;
   container_extension?: string;
+  directUrl?: string;
   tv_archive?: number | string;
   tv_archive_duration?: number | string;
 };
@@ -104,7 +105,7 @@ type SeriesItem = {
 
 type WatchedItem = {
   item: Channel;
-  source: 'live' | 'movie' | 'series';
+  source: 'live' | 'movie' | 'series' | 'local';
 };
 
 type Screen =
@@ -2456,7 +2457,7 @@ return () => {
 
   function rememberWatched(
     item: Channel,
-    source: 'live' | 'movie' | 'series'
+    source: 'live' | 'movie' | 'series' | 'local'
   ) {
     const entry: WatchedItem = { item, source };
     setLastWatched(entry);
@@ -2474,6 +2475,29 @@ return () => {
 
     let url = '';
     let list: Channel[] = [];
+
+    if (source === 'local') {
+      url = item.directUrl || '';
+
+      if (!url) return;
+
+      const li = localAsChannels.findIndex(
+        (c) => String(c.stream_id) === id
+      );
+
+      setActiveChannel({
+        url,
+        name: item.name || 'قناة',
+        index: li >= 0 ? li : -1,
+        source: 'local',
+        streamId: id,
+        archiveDays: 0,
+        timeshift: false,
+      });
+
+      setPlayerMinimized(false);
+      return;
+    }
 
     if (source === 'movie') {
       url = getVodStreamUrl(
@@ -3053,21 +3077,44 @@ return () => {
     setPlayerMinimized(false);
   }
 
+  const localAsChannels = React.useMemo<Channel[]>(
+    () =>
+      localChannels.map((c, i) => ({
+        stream_id: c.url || 'local-' + i,
+        name: c.name || 'قناة',
+        stream_icon: c.logo || '',
+        directUrl: c.url,
+      })),
+    [localChannels]
+  );
+
   function playLocalChannelAtIndex(index: number) {
     const channel = localChannels[index];
     if (!channel || !channel.url) return;
+
+    const id = channel.url || 'local-' + index;
 
     setActiveChannel({
       url: channel.url,
       name: channel.name || 'قناة',
       index,
       source: 'local',
-      streamId: '',
+      streamId: id,
       archiveDays: 0,
       timeshift: false,
     });
 
     setPlayerMinimized(false);
+
+    rememberWatched(
+      {
+        stream_id: id,
+        name: channel.name || 'قناة',
+        stream_icon: channel.logo || '',
+        directUrl: channel.url,
+      },
+      'local'
+    );
   }
 
   function playAtIndex(
@@ -3090,13 +3137,7 @@ return () => {
   ): Channel[] {
     if (source === 'movie') return movies;
     if (source === 'series') return episodes;
-    if (source === 'local') {
-      return localChannels.map((channel, index) => ({
-        stream_id: 'local-' + index,
-        name: channel.name || 'قناة',
-        stream_icon: channel.logo || '',
-      }));
-    }
+    if (source === 'local') return localAsChannels;
     return channels;
   }
 
