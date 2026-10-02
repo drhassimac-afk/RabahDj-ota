@@ -2383,6 +2383,9 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
   const [selectedSeason, setSelectedSeason] = useState('');
   const [episodes, setEpisodes] = useState<Channel[]>([]);
 
+  const [sourceMode, setSourceMode] =
+    useState<'xtream' | 'm3u' | 'local'>('xtream');
+
   const [loading, setLoading] = useState(false);
 
   const { width: winWidth, height: winHeight } = useWindowDimensions();
@@ -3435,6 +3438,8 @@ return () => {
               style={styles.entryCard}
               activeOpacity={0.82}
               onPress={async () => {
+                setSourceMode('xtream');
+
                 try {
                   const saved = await getSavedCredentials();
 
@@ -3468,7 +3473,10 @@ return () => {
             <TouchableOpacity
               style={styles.entryCard}
               activeOpacity={0.82}
-              onPress={() => setScreen('m3u-sources')}
+              onPress={() => {
+                setSourceMode('m3u');
+                openM3USources();
+              }}
             >
               <View style={styles.entryIconCircle}>
                 <MaterialCommunityIcons
@@ -3487,7 +3495,10 @@ return () => {
             <TouchableOpacity
               style={styles.entryCard}
               activeOpacity={0.82}
-              onPress={openLocalIPTV}
+              onPress={() => {
+                setSourceMode('local');
+                openLocalIPTV();
+              }}
             >
               <View style={styles.entryIconCircle}>
                 <MaterialCommunityIcons
@@ -3612,102 +3623,124 @@ return () => {
 
 
 
-                <View style={styles.dashboardRow}>
-                  <TouchableOpacity
-                    style={{ flex: 1 }}
-                    activeOpacity={0.85}
-                    onPress={openMovieCategories}
-                  >
-                    <LinearGradient
-                      colors={['#dc2626', '#991b1b']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.dashboardCardSmall}
+                {sourceMode === 'xtream' && (
+                  <>
+  <View style={styles.dashboardRow}>
+                    <TouchableOpacity
+                      style={{ flex: 1 }}
+                      activeOpacity={0.85}
+                      onPress={openMovieCategories}
                     >
-                      <MaterialCommunityIcons
-                        name="movie-open"
-                        size={34}
-                        color="#fff"
-                        style={styles.dashboardCardIcon}
-                      />
-                      <Text style={styles.dashboardCardTitle}>أفلام</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
+                      <LinearGradient
+                        colors={['#dc2626', '#991b1b']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.dashboardCardSmall}
+                      >
+                        <MaterialCommunityIcons
+                          name="movie-open"
+                          size={34}
+                          color="#fff"
+                          style={styles.dashboardCardIcon}
+                        />
+                        <Text style={styles.dashboardCardTitle}>أفلام</Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={{ flex: 1 }}
-                    activeOpacity={0.85}
-                    onPress={openSeriesCategories}
-                  >
-                    <LinearGradient
-                      colors={['#7c3aed', '#4c1d95']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.dashboardCardSmall}
+                    <TouchableOpacity
+                      style={{ flex: 1 }}
+                      activeOpacity={0.85}
+                      onPress={openSeriesCategories}
                     >
-                      <MaterialCommunityIcons
-                        name="television-classic"
-                        size={34}
+                      <LinearGradient
+                        colors={['#7c3aed', '#4c1d95']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.dashboardCardSmall}
+                      >
+                        <MaterialCommunityIcons
+                          name="television-classic"
+                          size={34}
+                          color="#fff"
+                          style={styles.dashboardCardIcon}
+                        />
+                        <Text style={styles.dashboardCardTitle}>مسلسلات</Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </View>
+
+                  <TinyCard
+                    colors={['#0f766e', '#115e59']}
+                    label="مباشر مع EPG"
+                    onPress={() => setScreen('epg-guide')}
+                    icon={
+                      <Ionicons
+                        name="calendar"
+                        size={20}
                         color="#fff"
-                        style={styles.dashboardCardIcon}
+                        style={styles.dashboardCardTinyIcon}
                       />
-                      <Text style={styles.dashboardCardTitle}>مسلسلات</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </View>
+                    }
+                  />
 
-                <TinyCard
-                  colors={['#0f766e', '#115e59']}
-                  label="مباشر مع EPG"
-                  onPress={() => setScreen('epg-guide')}
-                  icon={
-                    <Ionicons
-                      name="calendar"
-                      size={20}
-                      color="#fff"
-                      style={styles.dashboardCardTinyIcon}
-                    />
-                  }
-                />
+                  <TinyCard
+                    colors={['#0e7490', '#155e75']}
+                    label="شاشات متعددة"
+                    onPress={() => setScreen('multiscreen')}
+                    icon={
+                      <MaterialCommunityIcons
+                        name="view-grid"
+                        size={20}
+                        color="#fff"
+                        style={styles.dashboardCardTinyIcon}
+                      />
+                    }
+                  />
 
-                <TinyCard
-                  colors={['#0e7490', '#155e75']}
-                  label="شاشات متعددة"
-                  onPress={() => setScreen('multiscreen')}
-                  icon={
-                    <MaterialCommunityIcons
-                      name="view-grid"
-                      size={20}
-                      color="#fff"
-                      style={styles.dashboardCardTinyIcon}
-                    />
-                  }
-                />
+                  <TinyCard
+                    colors={['#b45309', '#78350f']}
+                    label="رتراباج"
+                    onPress={() => {
+                      const has = channels.some(
+                        (c) => String(c.tv_archive ?? '0') === '1'
+                      );
 
+                      Alert.alert(
+                        has ? 'الرتراباج' : 'غير مدعوم',
+                        has
+                          ? 'افتح أي قناة تدعم التسجيل، ثم اضغط زر الساعة داخل المشغّل.'
+                          : 'مزوّد الخدمة الحالي لا يوفّر خاصية التسجيل على أي قناة.'
+                      );
+                    }}
+                    icon={
+                      <Ionicons
+                        name="time"
+                        size={20}
+                        color="#fff"
+                        style={styles.dashboardCardTinyIcon}
+                      />
+                    }
+                  />
+                  </>
+                )}
                 <TinyCard
-                  colors={['#b45309', '#78350f']}
-                  label="رتراباج"
+                  colors={['#334155', '#1e293b']}
+                  label="تغيير المصدر"
                   onPress={() => {
-                    const has = channels.some(
-                      (c) => String(c.tv_archive ?? '0') === '1'
-                    );
-
-                    Alert.alert(
-                      has ? 'الرتراباج' : 'غير مدعوم',
-                      has
-                        ? 'افتح أي قناة تدعم التسجيل، ثم اضغط زر الساعة داخل المشغّل.'
-                        : 'مزوّد الخدمة الحالي لا يوفّر خاصية التسجيل على أي قناة.'
-                    );
+                    setActiveChannel(null);
+                    setPlayerMinimized(false);
+                    setScreen('entry');
                   }}
                   icon={
                     <Ionicons
-                      name="time"
+                      name="swap-horizontal"
                       size={20}
                       color="#fff"
                       style={styles.dashboardCardTinyIcon}
                     />
                   }
                 />
+
               </View>
 
               <Text style={styles.dashboardFooter}>متصل: {username}</Text>
