@@ -352,22 +352,29 @@ const currentBrightness = useRef(0.5);
   const retryCount = useRef(0);
   const emptyRef = useRef(false);
 
-  // فحص استباقي: هل الملف فارغ عند المزوّد؟
+  // فحص استباقي آمن — يتخطّى البث المباشر ولا يقرأ الجسم أبدًا
   useEffect(() => {
-    let cancelled = false;
     emptyRef.current = false;
+
+    if (/\.(m3u8|ts)(\?|$)/i.test(streamUrl)) return;
+
+    let cancelled = false;
+    const ctrl = new AbortController();
+    const killer = setTimeout(() => ctrl.abort(), 8000);
 
     (async () => {
       try {
         const res = await fetch(streamUrl, {
+          method: 'GET',
           headers: { Range: 'bytes=0-1' },
+          signal: ctrl.signal,
         });
 
-        const buf = await res.arrayBuffer();
+        const len = res.headers.get('content-length');
 
         if (cancelled) return;
 
-        if (res.ok && buf.byteLength === 0) {
+        if (res.ok && len === '0') {
           emptyRef.current = true;
           setVideoStatus('error');
           setVideoError(
@@ -375,14 +382,30 @@ const currentBrightness = useRef(0.5);
           );
         }
       } catch {
-        // تجاهل — نترك المشغّل يحاول
+        // تجاهل
+      } finally {
+        clearTimeout(killer);
       }
     })();
 
     return () => {
       cancelled = true;
+      ctrl.abort();
+      clearTimeout(killer);
     };
   }, [streamUrl]);
+
+  // مهلة قصوى: 25 ثانية ثم نعرض خطأ بدل الدوران اللانهائي
+  useEffect(() => {
+    if (videoStatus !== 'loading') return;
+
+    const id = setTimeout(() => {
+      setVideoStatus('error');
+      setVideoError('انتهت مهلة التحميل — الرابط لا يستجيب أو القناة متوقفة.');
+    }, 25000);
+
+    return () => clearTimeout(id);
+  }, [videoStatus, streamUrl]);
 
   const buildFallbackUrl = (url: string, attempt: number) => {
     const m = url.match(/\.([a-z0-9]+)(\?.*)?$/i);
@@ -706,11 +729,19 @@ const minimizePlayer = async () => {
         />
 
         {videoStatus === 'loading' && (
-          <View style={styles.videoMessageOverlay} pointerEvents="none">
+          <View style={styles.videoMessageOverlay} pointerEvents="box-none">
             <ActivityIndicator size="large" />
+
             <Text style={styles.videoMessageText}>
               {videoError || 'جارٍ تحميل البث...'}
             </Text>
+
+            <TouchableOpacity
+              style={styles.videoRetryButton}
+              onPress={onClose}
+            >
+              <Text style={styles.videoRetryText}>إلغاء وإغلاق</Text>
+            </TouchableOpacity>
           </View>
         )}
 
