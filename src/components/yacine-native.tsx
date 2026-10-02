@@ -4,6 +4,7 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-g
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image,
   ActivityIndicator,
+  InteractionManager,
   Alert,
   BackHandler,
   Dimensions,
@@ -44,6 +45,7 @@ import {
 
 import {
   getCurrentProgramme,
+  loadChannelEpg,
 } from '../lib/iptv-epg';
 
 import {
@@ -236,6 +238,8 @@ function PlayerView({
   currentIndex,
   onSelectIndex,
   backRef,
+  epgUrls,
+  epgTvgId,
   archiveDays,
   isTimeshift,
   onTimeshift,
@@ -255,6 +259,8 @@ function PlayerView({
   currentIndex?: number;
   onSelectIndex?: (index: number) => void;
   backRef?: { current: (() => void) | null };
+  epgUrls?: string[];
+  epgTvgId?: string;
   archiveDays?: number;
   isTimeshift?: boolean;
   onTimeshift?: (minutesAgo: number, variant?: number) => void;
@@ -291,6 +297,9 @@ function PlayerView({
 
   const [showChannelList, setShowChannelList] = useState(false);
   const [showTimeshift, setShowTimeshift] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
+
+  const guideOn = !!(epgTvgId && epgUrls && epgUrls.length > 0);
 
   const archiveOn = (archiveDays ?? 0) > 0;
   const maxMinutes = (archiveDays ?? 0) * 1440;
@@ -307,7 +316,7 @@ const showControlsTemporarily = () => {
   setShowControls(true);
   if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
   controlsTimeout.current = setTimeout(() => {
-    if (fullscreenRef.current && isPlaying) {
+    if (fullscreenRef.current && isPlaying && videoStatus === 'ready') {
       setShowControls(false);
     }
   }, 2500);
@@ -728,6 +737,11 @@ const minimizePlayer = async () => {
           surfaceType="textureView"
         />
 
+        {/* طبقة السحب شفافة منفصلة فوق الفيديو — gesture-handler يلتقط اللمسة قبل أي native surface */}
+        <GestureDetector gesture={videoGestures}>
+          <View style={StyleSheet.absoluteFill} />
+        </GestureDetector>
+
         {videoStatus === 'loading' && (
           <View style={styles.videoMessageOverlay} pointerEvents="box-none">
             <ActivityIndicator size="large" />
@@ -767,10 +781,6 @@ const minimizePlayer = async () => {
           </View>
         )}
 
-        {/* طبقة السحب شفافة منفصلة فوق الفيديو — gesture-handler يلتقط اللمسة قبل أي native surface */}
-        <GestureDetector gesture={videoGestures}>
-          <View style={StyleSheet.absoluteFill} />
-        </GestureDetector>
 
         {indicator && !fullscreen && (
           <View
@@ -990,6 +1000,36 @@ const minimizePlayer = async () => {
           </View>
         )}
 
+        {showGuide && (
+          <View style={styles.tsOverlay}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFill}
+              activeOpacity={1}
+              onPress={() => setShowGuide(false)}
+            />
+
+            <View
+              style={[
+                styles.guidePanel,
+                { paddingBottom: insets.bottom + 14 },
+              ]}
+            >
+              <View style={styles.drawerHeader}>
+                <Text style={styles.drawerTitle}>دليل البرامج</Text>
+
+                <TouchableOpacity onPress={() => setShowGuide(false)}>
+                  <Ionicons name="close" size={18} color="#fff" />
+                </TouchableOpacity>
+              </View>
+
+              <LocalEpgPanel
+                epgUrls={epgUrls || []}
+                tvgId={epgTvgId || ''}
+              />
+            </View>
+          </View>
+        )}
+
         {showChannelList && (
           <View style={styles.drawerOverlay}>
             <TouchableOpacity
@@ -1118,6 +1158,15 @@ const minimizePlayer = async () => {
               onPress={() => setShowTimeshift(true)}
             >
               <Ionicons name="time-outline" size={22} color="#fff" />
+            </TouchableOpacity>
+          )}
+
+          {guideOn && (
+            <TouchableOpacity
+              style={[styles.controlButton, styles.drawerToggle]}
+              onPress={() => setShowGuide(true)}
+            >
+              <Ionicons name="book-outline" size={22} color="#fff" />
             </TouchableOpacity>
           )}
 
@@ -1400,6 +1449,127 @@ function TinyCard({
         <Text style={styles.dashboardCardTinyText}>{label}</Text>
       </LinearGradient>
     </TouchableOpacity>
+  );
+}
+
+// ============================================================
+// دليل البرامج للقنوات المحلية / M3U — تحميل عند الطلب
+// ============================================================
+function LocalEpgPanel({
+  epgUrls,
+  tvgId,
+}: {
+  epgUrls: string[];
+  tvgId: string;
+}) {
+  const [items, setItems] = useState<
+    { title: string; start: number; stop: number }[]
+  >([]);
+  const [busy, setBusy] = useState(true);
+  const [failed, setFailed] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setBusy(true);
+    setFailed('');
+
+    // نؤجّل التحليل حتى تنتهي حركة فتح اللوحة
+    const task = InteractionManager.runAfterInteractions(async () => {
+      try {
+        const list = await loadChannelEpg(epgUrls, tvgId);
+
+        if (cancelled) return;
+
+        const now = Date.now();
+
+        setItems(
+          (list || [])
+            .filter((pr: any) => pr.stop > now - 3600000)
+            .slice(0, 30)
+            .map((pr: any) => ({
+              title: pr.title,
+              start: pr.start,
+              stop: pr.stop,
+            }))
+        );
+      } catch (e: any) {
+        if (!cancelled) {
+          setFailed(e?.message || 'تعذر تحميل دليل البرامج');
+        }
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      task.cancel();
+    };
+  }, [epgUrls.join('|'), tvgId]);
+
+  const fmt = (ms: number) =>
+    new Date(ms).toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+  if (busy) {
+    return (
+      <View style={styles.guideBusy}>
+        <ActivityIndicator color="#ff1e27" />
+        <Text style={styles.guideBusyText}>
+          جارٍ تحميل الدليل لأول مرة...
+        </Text>
+      </View>
+    );
+  }
+
+  if (failed) {
+    return (
+      <View style={styles.guideBusy}>
+        <Text style={styles.splitEmptyText}>{failed}</Text>
+      </View>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <View style={styles.guideBusy}>
+        <Text style={styles.splitEmptyText}>
+          لا يوجد دليل لهذه القناة
+        </Text>
+      </View>
+    );
+  }
+
+  const now = Date.now();
+
+  return (
+    <FlatList
+      data={items}
+      keyExtractor={(it, i) => String(it.start) + i}
+      initialNumToRender={10}
+      style={{ maxHeight: 320 }}
+      renderItem={({ item }) => {
+        const live = now >= item.start && now < item.stop;
+
+        return (
+          <View style={[styles.epgRow, live && styles.epgRowActive]}>
+            <Text style={[styles.epgRowTime, live && styles.epgRowLiveText]}>
+              {fmt(item.start)} - {fmt(item.stop)}
+            </Text>
+
+            <Text
+              style={[styles.epgRowTitle, live && styles.epgRowLiveText]}
+              numberOfLines={2}
+            >
+              {item.title}
+            </Text>
+          </View>
+        );
+      }}
+    />
   );
 }
 
@@ -2310,6 +2480,7 @@ function IPTVCurrentEpg({
   tvgId?: string;
 }) {
   const [title, setTitle] = useState('');
+  const epgKey = epgUrls.join('|');
 
   useEffect(() => {
     let cancelled = false;
@@ -2341,7 +2512,7 @@ function IPTVCurrentEpg({
     return () => {
       cancelled = true;
     };
-  }, [epgUrls, tvgId]);
+  }, [epgKey, tvgId]);
 
   if (!title) {
     return null;
@@ -2400,6 +2571,7 @@ export default function YacineNative({ onClose }: YacineNativeProps) {
     streamId: string;
     archiveDays?: number;
     timeshift?: boolean;
+    tvgId?: string;
   } | null>(null);
   const [playerMinimized, setPlayerMinimized] = useState(false);
 
@@ -3136,6 +3308,7 @@ return () => {
       streamId: id,
       archiveDays: 0,
       timeshift: false,
+      tvgId: (channel as any).tvgId || '',
     });
 
     setPlayerMinimized(false);
@@ -3441,6 +3614,10 @@ return () => {
                 ? activeChannel!.archiveDays ?? 0
                 : 0
             }
+            epgUrls={
+              activeChannel!.source === 'local' ? iptvEpgUrls : []
+            }
+            epgTvgId={activeChannel!.tvgId || ''}
             isTimeshift={!!activeChannel!.timeshift}
             onTimeshift={(min, variant) => playTimeshift(min, variant)}
             onLive={() => {
@@ -4135,14 +4312,22 @@ return () => {
                           return;
                         }
 
+                        if (localIndex >= 0) {
+                          playLocalChannelAtIndex(localIndex);
+                          return;
+                        }
+
+                        const id = item.url;
+
                         setActiveChannel({
                           url: item.url,
                           name: item.name || 'قناة',
-                          index: localIndex,
+                          index: -1,
                           source: 'local',
-                          streamId: '',
+                          streamId: id,
                           archiveDays: 0,
                           timeshift: false,
+                          tvgId: item.tvgId || '',
                         });
 
                         setPlayerMinimized(false);
@@ -4176,7 +4361,7 @@ return () => {
                         </Text>
 
                         <IPTVCurrentEpg
-                          epgUrls={iptvEpgUrls}
+                          epgUrls={[]}
                           tvgId={item.tvgId}
                         />
                       </View>
@@ -5164,6 +5349,8 @@ const styles = StyleSheet.create({
 
   videoMessageOverlay: {
     ...StyleSheet.absoluteFill,
+    zIndex: 28,
+    elevation: 28,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.55)',
@@ -5704,6 +5891,26 @@ const styles = StyleSheet.create({
   },
 
   tsAltText: { color: '#c7d3e3', fontSize: 11 },
+
+  guidePanel: {
+    backgroundColor: '#0b1220',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    maxHeight: '70%',
+  },
+
+  guideBusy: {
+    paddingVertical: 28,
+    alignItems: 'center',
+  },
+
+  guideBusyText: {
+    color: '#9aa8bd',
+    fontSize: 12,
+    marginTop: 10,
+  },
 
   multiHeader: {
     minHeight: 56,

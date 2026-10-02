@@ -22,6 +22,15 @@ const epgCache = new Map<
   }
 >();
 
+// منع تحميل/تحليل نفس الملف أكثر من مرة في وقت واحد
+const inFlight = new Map<
+  string,
+  Promise<{ programmes: IPTVProgramme[]; channels: EpgChannel[] }>
+>();
+
+// حد أقصى لحجم ملف EPG — 12 ميغابايت
+const MAX_EPG_BYTES = 12 * 1024 * 1024;
+
 const CACHE_TTL = 30 * 60 * 1000;
 
 function decodeXmlText(value: string): string {
@@ -211,6 +220,12 @@ async function downloadXml(
     );
   }
 
+  const sizeHeader = response.headers.get('content-length');
+
+  if (sizeHeader && Number(sizeHeader) > MAX_EPG_BYTES) {
+    throw new Error('ملف EPG كبير جدًا — تم تخطّيه');
+  }
+
   const bytes = new Uint8Array(
     await response.arrayBuffer()
   );
@@ -333,25 +348,34 @@ async function loadEpgSource(
     };
   }
 
-  const xml =
-    await downloadXml(url);
+  const running = inFlight.get(url);
 
-  const channels =
-    parseXmltvChannels(xml);
+  if (running) {
+    return running;
+  }
 
-  const programmes =
-    parseXmltv(xml);
+  const task = (async () => {
+    const xml = await downloadXml(url);
 
-  epgCache.set(url, {
-    loadedAt: Date.now(),
-    programmes,
-    channels,
-  });
+    const channels = parseXmltvChannels(xml);
+    const programmes = parseXmltv(xml);
 
-  return {
-    programmes,
-    channels,
-  };
+    epgCache.set(url, {
+      loadedAt: Date.now(),
+      programmes,
+      channels,
+    });
+
+    return { programmes, channels };
+  })();
+
+  inFlight.set(url, task);
+
+  try {
+    return await task;
+  } finally {
+    inFlight.delete(url);
+  }
 }
 
 function findEpgChannel(
