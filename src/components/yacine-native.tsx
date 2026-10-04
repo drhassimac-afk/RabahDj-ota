@@ -277,6 +277,8 @@ function PlayerView({
   useKeepAwake();
   const [fullscreen, setFullscreen] = useState(false);
   const fullscreenRef = useRef(false);
+  const isPlayingRef = useRef(true);
+  const readyRef = useRef(false);
   const [isPlaying, setIsPlaying] = useState(true);
 
   const [locked, setLocked] = useState(false);
@@ -315,21 +317,20 @@ const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 const showControlsTemporarily = () => {
   setShowControls(true);
+
   if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
+
   controlsTimeout.current = setTimeout(() => {
-    if (fullscreenRef.current && isPlaying && videoStatus === 'ready') {
-      setShowControls(false);
-    }
-  }, 2500);
+    if (lockedRef.current) return;
+    if (!isPlayingRef.current) return;
+    if (!readyRef.current) return;
+
+    setShowControls(false);
+  }, 3500);
 };
 
 useEffect(() => {
-  if (fullscreenRef.current) {
-    showControlsTemporarily();
-  } else {
-    setShowControls(true);
-    if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
-  }
+  showControlsTemporarily();
 }, [fullscreen, isPlaying, streamUrl]);
 
 useEffect(() => {
@@ -443,6 +444,15 @@ const currentBrightness = useRef(0.5);
 
   const [videoStatus, setVideoStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [videoError, setVideoError] = useState<string | null>(null);
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  useEffect(() => {
+    readyRef.current = videoStatus === 'ready';
+    showControlsTemporarily();
+  }, [videoStatus]);
   const retryCount = useRef(0);
   const emptyRef = useRef(false);
 
