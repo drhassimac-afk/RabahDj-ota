@@ -717,7 +717,18 @@ const minimizePlayer = async () => {
     }
   };
 
-  const showIndicator = (type: 'brightness' | 'volume', value: number) => {
+  const lastIndicatorAt = useRef(0);
+
+  const showIndicator = (
+    type: 'brightness' | 'volume',
+    value: number,
+    force = false
+  ) => {
+    const now = Date.now();
+
+    if (!force && now - lastIndicatorAt.current < 55) return;
+    lastIndicatorAt.current = now;
+
     if (type === 'brightness') {
       setBrightnessLevel(value);
     } else {
@@ -733,38 +744,83 @@ const minimizePlayer = async () => {
   // نصف الشاشة الأيسر: إضاءة — نصف الشاشة الأيمن: صوت
   const touchStartX = useRef(0);
 
+  const panActive = useRef(false);
+  const appliedBrightness = useRef(0.5);
+  const appliedVolume = useRef(0.5);
+
   const panGesture = Gesture.Pan()
     .runOnJS(true)
+    .activeOffsetY([-5, 5])
+    .failOffsetX([-30, 30])
     .onBegin((e) => {
       showControlsTemporarily();
       touchStartX.current = e.x;
       brightnessStart.current = currentBrightness.current;
       volumeStart.current = currentVolume.current;
+      appliedBrightness.current = currentBrightness.current;
+      appliedVolume.current = currentVolume.current;
+    })
+    .onStart(() => {
+      panActive.current = true;
     })
     .onUpdate((e) => {
       if (lockedRef.current || !fullscreenRef.current) return;
 
       const { width, height } = dims.current;
-      const delta = -e.translationY / height;
+
+      // نصف ارتفاع الشاشة = كامل المدى (أكثر حساسية)
+      const delta = -e.translationY / (height * 0.5);
 
       if (touchStartX.current < width / 2) {
-        let next = brightnessStart.current + delta;
-        next = Math.max(0, Math.min(1, next));
+        const next = Math.max(
+          0,
+          Math.min(1, brightnessStart.current + delta)
+        );
+
         currentBrightness.current = next;
-        Brightness.setBrightnessAsync(next).catch(() => {});
+
+        if (Math.abs(next - appliedBrightness.current) > 0.008) {
+          appliedBrightness.current = next;
+          Brightness.setBrightnessAsync(next).catch(() => {});
+        }
+
         showIndicator('brightness', next);
       } else {
-        let next = volumeStart.current + delta;
-        next = Math.max(0, Math.min(1, next));
+        const next = Math.max(
+          0,
+          Math.min(1, volumeStart.current + delta)
+        );
+
         currentVolume.current = next;
-        VolumeManager.setVolume(next);
+
+        if (Math.abs(next - appliedVolume.current) > 0.008) {
+          appliedVolume.current = next;
+          VolumeManager.setVolume(next);
+        }
+
         showIndicator('volume', next);
       }
     })
-    .minDistance(8);
+    .onFinalize(() => {
+      if (!panActive.current) return;
+      panActive.current = false;
+
+      // تثبيت القيمة النهائية بدقة
+      if (touchStartX.current < dims.current.width / 2) {
+        Brightness.setBrightnessAsync(currentBrightness.current).catch(
+          () => {}
+        );
+        showIndicator('brightness', currentBrightness.current, true);
+      } else {
+        VolumeManager.setVolume(currentVolume.current);
+        showIndicator('volume', currentVolume.current, true);
+      }
+    });
 
   const tapGesture = Gesture.Tap()
     .runOnJS(true)
+    .maxDuration(250)
+    .maxDistance(14)
     .onEnd(() => {
       if (lockedRef.current) {
         showControlsTemporarily();
@@ -781,7 +837,7 @@ const minimizePlayer = async () => {
       }
     });
 
-  const videoGestures = Gesture.Exclusive(tapGesture, panGesture);
+  const videoGestures = Gesture.Race(panGesture, tapGesture);
 
 
   return (
