@@ -744,6 +744,7 @@ const minimizePlayer = async () => {
   // نصف الشاشة الأيسر: إضاءة — نصف الشاشة الأيمن: صوت
   const touchStartX = useRef(0);
 
+  const videoBox = useRef({ width: 0, height: 0 });
   const panActive = useRef(false);
   const appliedBrightness = useRef(0.5);
   const appliedVolume = useRef(0.5);
@@ -764,9 +765,10 @@ const minimizePlayer = async () => {
       panActive.current = true;
     })
     .onUpdate((e) => {
-      if (lockedRef.current || !fullscreenRef.current) return;
+      if (lockedRef.current) return;
 
-      const { width, height } = dims.current;
+      const width = videoBox.current.width || dims.current.width;
+      const height = videoBox.current.height || dims.current.height;
 
       // نصف ارتفاع الشاشة = كامل المدى (أكثر حساسية)
       const delta = -e.translationY / (height * 0.5);
@@ -806,7 +808,9 @@ const minimizePlayer = async () => {
       panActive.current = false;
 
       // تثبيت القيمة النهائية بدقة
-      if (touchStartX.current < dims.current.width / 2) {
+      const w = videoBox.current.width || dims.current.width;
+
+      if (touchStartX.current < w / 2) {
         Brightness.setBrightnessAsync(currentBrightness.current).catch(
           () => {}
         );
@@ -834,7 +838,11 @@ const minimizePlayer = async () => {
         } else {
           showControlsTemporarily();
         }
+
+        return;
       }
+
+      showControlsTemporarily();
     });
 
   const videoGestures = Gesture.Race(panGesture, tapGesture);
@@ -868,6 +876,10 @@ const minimizePlayer = async () => {
           styles.videoContainer,
           fullscreen && styles.videoContainerFullscreen,
         ]}
+        onLayout={(e) => {
+          const { width: w, height: h } = e.nativeEvent.layout;
+          videoBox.current = { width: w, height: h };
+        }}
       >
         <VideoView
           player={player}
@@ -1014,10 +1026,14 @@ const minimizePlayer = async () => {
           </TouchableOpacity>
         )}
 
-        {fullscreen && showControls && !locked && (
+        {showControls && !locked && (
           <>
             <View
-              style={[styles.sideSlider, { left: 20 + insets.left }]}
+              style={[
+                styles.sideSlider,
+                { left: 20 + insets.left },
+                !fullscreen && styles.sideSliderCompact,
+              ]}
               pointerEvents="none"
             >
               <Ionicons name="sunny" size={18} color="#fff" style={styles.sideIcon} />
@@ -1032,7 +1048,11 @@ const minimizePlayer = async () => {
             </View>
 
             <View
-              style={[styles.sideSlider, { right: 20 + insets.right }]}
+              style={[
+                styles.sideSlider,
+                { right: 20 + insets.right },
+                !fullscreen && styles.sideSliderCompact,
+              ]}
               pointerEvents="none"
             >
               <Ionicons name="volume-high" size={18} color="#fff" style={styles.sideIcon} />
@@ -5735,6 +5755,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 25,
   },
+
+  sideSliderCompact: { top: '22%', height: '40%' },
 
   sideIcon: { fontSize: 18, marginBottom: 8 },
 
