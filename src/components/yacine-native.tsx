@@ -299,6 +299,7 @@ function PlayerView({
   const [showTimeshift, setShowTimeshift] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
 
+
   const guideOn = false;
 
   const archiveOn = (archiveDays ?? 0) > 0;
@@ -355,6 +356,90 @@ const currentBrightness = useRef(0.5);
   const player = useVideoPlayer(streamUrl, (p) => {
     p.play();
   });
+
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const seekingRef = useRef(false);
+  const barWidth = useRef(1);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (seekingRef.current) return;
+
+      try {
+        const d = (player as any).duration;
+        const c = (player as any).currentTime;
+
+        setDuration(Number.isFinite(d) && d > 0 ? d : 0);
+        setPosition(Number.isFinite(c) && c >= 0 ? c : 0);
+      } catch {
+        // تجاهل
+      }
+    }, 500);
+
+    return () => clearInterval(id);
+  }, [player]);
+
+  useEffect(() => {
+    setPosition(0);
+    setDuration(0);
+  }, [streamUrl]);
+
+  const seekable = duration > 1;
+
+  const seekBy = (sec: number) => {
+    try {
+      if (typeof (player as any).seekBy === 'function') {
+        (player as any).seekBy(sec);
+      } else {
+        const c = (player as any).currentTime || 0;
+        (player as any).currentTime = Math.max(0, c + sec);
+      }
+    } catch {
+      // تجاهل
+    }
+  };
+
+  const seekTo = (sec: number) => {
+    try {
+      (player as any).currentTime = Math.max(0, Math.min(duration, sec));
+    } catch {
+      // تجاهل
+    }
+  };
+
+  const fmtTime = (sec: number) => {
+    const t = Math.max(0, Math.floor(sec));
+    const h = Math.floor(t / 3600);
+    const m = Math.floor((t % 3600) / 60);
+    const x = t % 60;
+    const pad = (n: number) => String(n).padStart(2, '0');
+
+    return h > 0
+      ? `${h}:${pad(m)}:${pad(x)}`
+      : `${pad(m)}:${pad(x)}`;
+  };
+
+  const seekGesture = Gesture.Pan()
+    .runOnJS(true)
+    .minDistance(0)
+    .onBegin((e) => {
+      if (!seekable) return;
+      seekingRef.current = true;
+      setPosition((e.x / barWidth.current) * duration);
+    })
+    .onUpdate((e) => {
+      if (!seekable) return;
+      const r = Math.max(0, Math.min(1, e.x / barWidth.current));
+      setPosition(r * duration);
+    })
+    .onEnd((e) => {
+      if (!seekable) return;
+      const r = Math.max(0, Math.min(1, e.x / barWidth.current));
+      seekTo(r * duration);
+      seekingRef.current = false;
+      showControlsTemporarily();
+    });
 
   const [videoStatus, setVideoStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [videoError, setVideoError] = useState<string | null>(null);
@@ -1132,6 +1217,55 @@ const minimizePlayer = async () => {
           />
         ) : null}
 
+        {showControls && !locked && (
+          <View
+            style={[
+              styles.seekWrap,
+              { bottom: 92 + insets.bottom },
+            ]}
+          >
+            <Text style={styles.seekTime}>{fmtTime(position)}</Text>
+
+            <GestureDetector gesture={seekGesture}>
+              <View
+                style={styles.seekTouch}
+                onLayout={(e) => {
+                  barWidth.current = e.nativeEvent.layout.width || 1;
+                }}
+              >
+                <View style={styles.seekTrack}>
+                  <View
+                    style={[
+                      styles.seekFill,
+                      {
+                        width: seekable
+                          ? `${Math.min(100, (position / duration) * 100)}%`
+                          : '100%',
+                        backgroundColor: seekable ? '#ff1e27' : '#6b7a92',
+                      },
+                    ]}
+                  />
+                </View>
+
+                {seekable && (
+                  <View
+                    style={[
+                      styles.seekThumb,
+                      {
+                        left: `${Math.min(100, (position / duration) * 100)}%`,
+                      },
+                    ]}
+                  />
+                )}
+              </View>
+            </GestureDetector>
+
+            <Text style={styles.seekTime}>
+              {seekable ? fmtTime(duration) : 'مباشر'}
+            </Text>
+          </View>
+        )}
+
         {/* أزرار التحكم السفلية: سابق / تشغيل-إيقاف / تالي */}
         {showControls && !locked && (
           <View
@@ -1178,6 +1312,19 @@ const minimizePlayer = async () => {
             <Ionicons name="play-skip-back" size={22} color="#fff" />
           </TouchableOpacity>
 
+          {seekable && (
+            <TouchableOpacity
+              style={[styles.controlButton, styles.drawerToggle]}
+              onPress={() => {
+                seekBy(-10);
+                showControlsTemporarily();
+              }}
+            >
+              <Ionicons name="play-back" size={20} color="#fff" />
+              <Text style={styles.seekLabel}>10</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity style={styles.controlButtonPlay} onPress={togglePlayPause}>
             <Ionicons
               name={isPlaying ? 'pause' : 'play'}
@@ -1185,6 +1332,19 @@ const minimizePlayer = async () => {
               color="#fff"
             />
           </TouchableOpacity>
+
+          {seekable && (
+            <TouchableOpacity
+              style={[styles.controlButton, styles.drawerToggle]}
+              onPress={() => {
+                seekBy(10);
+                showControlsTemporarily();
+              }}
+            >
+              <Ionicons name="play-forward" size={20} color="#fff" />
+              <Text style={styles.seekLabel}>10</Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={[styles.controlButton, !hasNext && styles.controlButtonDisabled]}
@@ -2955,6 +3115,26 @@ return () => {
         );
 
       if (!playlist.channels.length) {
+        // رابط HLS مباشر (#EXT-X-STREAM-INF) وليس قائمة قنوات
+        const isHls =
+          /#EXT-X-STREAM-INF|#EXT-X-TARGETDURATION/i.test(content) ||
+          /\.m3u8(\?|$)/i.test(source.url);
+
+        if (isHls) {
+          setActiveChannel({
+            url: source.url,
+            name: source.name || 'بث مباشر',
+            index: -1,
+            source: 'local',
+            streamId: source.url,
+            archiveDays: 0,
+            timeshift: false,
+          });
+
+          setPlayerMinimized(false);
+          return;
+        }
+
         throw new Error(
           'لم يتم العثور على قنوات داخل ملف M3U'
         );
@@ -5891,6 +6071,56 @@ const styles = StyleSheet.create({
   },
 
   tsAltText: { color: '#c7d3e3', fontSize: 11 },
+
+  seekWrap: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 32,
+    elevation: 32,
+  },
+
+  seekTime: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+    width: 54,
+    textAlign: 'center',
+  },
+
+  seekTouch: {
+    flex: 1,
+    height: 28,
+    justifyContent: 'center',
+  },
+
+  seekTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+    overflow: 'hidden',
+  },
+
+  seekFill: { height: 4, borderRadius: 2 },
+
+  seekThumb: {
+    position: 'absolute',
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    backgroundColor: '#fff',
+    marginLeft: -6,
+  },
+
+  seekLabel: {
+    position: 'absolute',
+    bottom: 4,
+    color: '#fff',
+    fontSize: 8,
+    fontWeight: '700',
+  },
 
   guidePanel: {
     backgroundColor: '#0b1220',
