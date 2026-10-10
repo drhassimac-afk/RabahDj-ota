@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["GuardModule"]
+  },
+  "android": {
+    "modules": ["com.rabahdj.app.guard.GuardModule"]
+  }
+}

@@ -1,4 +1,5 @@
 import * as Sharing from 'expo-sharing';
+import { useRouter } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
@@ -223,6 +224,7 @@ type CinemaCategory = 'movies' | 'tv' | 'series';
 type GameTab = 'xo' | 'chess';
 
 function Index() {
+  const router = useRouter();
   const [ready, setReady] = useState(false);
   const [showWalkie, setShowWalkie] = useState(false);
   const [showYacine, setShowYacine] = useState(false);
@@ -893,6 +895,7 @@ function Index() {
     { key: 'games', label: 'الألعاب', emoji: '🎮', gradient: ['#ff9800', '#e65100'] as [string, string], onPress: openGames },
     { key: 'chat', label: 'محادثات فورية', emoji: '💬', gradient: ['#448aff', '#1565c0'] as [string, string], onPress: openChat },
     { key: 'files', label: 'مشاركة ملفات', emoji: '📁', gradient: ['#7c1fd9', '#4a0f8c'] as [string, string], onPress: () => setShowFiles(true) },
+    { key: 'parental', label: 'الرقابة الأبوية', emoji: '👨‍👩‍👧', gradient: ['#2563eb', '#1e3a8a'] as [string, string], onPress: () => router.push('/parental') },
     { key: 'nearby', label: 'قريبون مني', emoji: '📍', gradient: ['#ff9800', '#e65100'] as [string, string], onPress: openNearby },
   ];
 
