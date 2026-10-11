@@ -1,15 +1,5 @@
 package com.rabahdj.app.guard
 
-import expo.modules.kotlin.modules.Module
-import expo.modules.kotlin.modules.ModuleDefinition
-
-class GuardModule : Module() {
-  override fun definition() = ModuleDefinition {
-    Name("GuardModule")
-  }
-}
-package com.rabahdj.app.guard
-
 import android.app.AppOpsManager
 import android.app.usage.UsageStatsManager
 import android.content.Context
@@ -36,13 +26,13 @@ class GuardModule : Module() {
 
     Function("hasUsageAccess") {
       val context = appContext.reactContext
-        ?: throw IllegalStateException("Android context is unavailable")
+        ?: throw IllegalStateException("Android context unavailable")
       hasAccess(context)
     }
 
     Function("openUsageSettings") {
       val context = appContext.reactContext
-        ?: throw IllegalStateException("Android context is unavailable")
+        ?: throw IllegalStateException("Android context unavailable")
       val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       }
@@ -51,7 +41,7 @@ class GuardModule : Module() {
 
     AsyncFunction("getTodayUsage") {
       val context = appContext.reactContext
-        ?: throw IllegalStateException("Android context is unavailable")
+        ?: throw IllegalStateException("Android context unavailable")
 
       if (!hasAccess(context)) {
         throw IllegalStateException("Usage access is not enabled")
@@ -62,26 +52,21 @@ class GuardModule : Module() {
       calendar.set(Calendar.MINUTE, 0)
       calendar.set(Calendar.SECOND, 0)
       calendar.set(Calendar.MILLISECOND, 0)
-      val startOfDay = calendar.timeInMillis
-      val now = System.currentTimeMillis()
 
       val manager = context.getSystemService(Context.USAGE_STATS_SERVICE)
         as UsageStatsManager
 
       manager.queryUsageStats(
         UsageStatsManager.INTERVAL_DAILY,
-        startOfDay,
-        now
-      )
-        .orEmpty()
-        .filter { it.totalTimeInForeground > 0 }
+        calendar.timeInMillis,
+        System.currentTimeMillis()
+      ).orEmpty()
+        .filter { it.totalTimeInForeground > 0L }
         .groupBy { it.packageName }
         .map { (packageName, entries) ->
           mapOf(
             "packageName" to packageName,
-            "minutes" to (
-              entries.sumOf { it.totalTimeInForeground } / 60_000L
-            )
+            "minutes" to entries.sumOf { it.totalTimeInForeground } / 60000L
           )
         }
         .sortedByDescending { it["minutes"] as Long }
