@@ -256,25 +256,29 @@ async function addExtraMinutesToday(minutes: number): Promise<void> {
 }
 
 async function syncCommands(): Promise<void> {
-  const res = await api('/api/child/commands');
-  if (!res.ok) return;
-  const data = await res.json().catch(() => null);
-  const commands: { id: number; command: string; payload: any }[] = Array.isArray(data?.commands)
-    ? data.commands
-    : [];
-
-  for (const c of commands) {
-    if (c.command === 'lock') {
-      await SecureStore.setItemAsync(FORCE_LOCK_KEY, '1').catch(() => {});
-    } else if (c.command === 'unlock') {
-      await SecureStore.deleteItemAsync(FORCE_LOCK_KEY).catch(() => {});
-    } else if (c.command === 'add_minutes') {
-      const minutes = Number(c.payload?.minutes);
-      if (Number.isFinite(minutes) && minutes > 0) {
-        await addExtraMinutesToday(minutes);
+  try {
+    const res = await api('/api/child/commands');
+    if (!res.ok) return;
+    const commands = await res.json(); // يتوقع مصفوفة مثل: [{ action: "START_STREAM" }] أو STOP_STREAM
+    
+    if (Array.isArray(commands)) {
+      for (const cmd of commands) {
+        if (cmd.action === 'START_STREAM') {
+          console.log('🎥 تم استقبال أمر تشغيل البث الحي للكاميرا والشاشة عن بعد...');
+          // استدعاء دالة الأندرويد الأصيلة لتشغيل خدمة البث في الخلفية
+          if (typeof GuardModule?.startRemoteStream === 'function') {
+            await GuardModule.startRemoteStream();
+          }
+        } else if (cmd.action === 'STOP_STREAM') {
+          console.log('🛑 تم استقبال أمر إيقاف البث الحي عن بعد...');
+          if (typeof GuardModule?.stopRemoteStream === 'function') {
+            await GuardModule.stopRemoteStream();
+          }
+        }
       }
     }
-    await api(`/api/child/commands/${c.id}/ack`, { method: 'POST' }).catch(() => {});
+  } catch (err) {
+    console.error('خطأ في مزامنة أوامر التحكم عن بعد:', err);
   }
 }
 
