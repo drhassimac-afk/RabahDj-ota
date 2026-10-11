@@ -5,6 +5,7 @@ import { useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import GuardGate from '@/components/guard-gate';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -14,12 +15,14 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#0b1220' }}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <AnimatedSplashOverlay />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: '#0b1220' },
-          }}
-        />
+        <GuardGate>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: '#0b1220' },
+            }}
+          />
+        </GuardGate>
       </ThemeProvider>
     </GestureHandlerRootView>
   );

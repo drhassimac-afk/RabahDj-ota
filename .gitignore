@@ -33,3 +33,8 @@ npm-debug.*
 web-build/
 yarn-debug.*
 yarn-error.*
+*.bak*
+*before*
+.env*
+config.json
+credentials.json

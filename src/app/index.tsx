@@ -896,6 +896,7 @@ function Index() {
     { key: 'chat', label: 'محادثات فورية', emoji: '💬', gradient: ['#448aff', '#1565c0'] as [string, string], onPress: openChat },
     { key: 'files', label: 'مشاركة ملفات', emoji: '📁', gradient: ['#7c1fd9', '#4a0f8c'] as [string, string], onPress: () => setShowFiles(true) },
     { key: 'parental', label: 'الرقابة الأبوية', emoji: '👨‍👩‍👧', gradient: ['#2563eb', '#1e3a8a'] as [string, string], onPress: () => router.push('/parental') },
+    { key: 'pair', label: 'ربط جهاز الطفل', emoji: '🔗', gradient: ['#0ea5e9', '#0c4a6e'] as [string, string], onPress: () => router.push('/pair-child' as any) },
     { key: 'nearby', label: 'قريبون مني', emoji: '📍', gradient: ['#ff9800', '#e65100'] as [string, string], onPress: openNearby },
   ];
 
