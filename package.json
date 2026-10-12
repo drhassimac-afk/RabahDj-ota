@@ -52,7 +52,7 @@
     "react-native-web": "^0.21.2",
     "react-native-webview": "^13.16.1",
     "react-native-worklets": "0.10.1",
-    "react-native-notification-listener": "^4.0.3",
+    "react-native-android-notification-listener": "^4.0.3",
     "react-native-webrtc": "^124.0.8"
   },
   "devDependencies": {
