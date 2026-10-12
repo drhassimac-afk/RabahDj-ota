@@ -81,7 +81,10 @@
         "expo-build-properties",
         {
           "android": {
-            "usesCleartextTraffic": true
+            "usesCleartextTraffic": true,
+            "manifestPlaceholders": {
+              "toolsReplaceAllowBackup": "android:allowBackup"
+            }
           }
         }
       ],
