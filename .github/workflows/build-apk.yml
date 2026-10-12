@@ -32,6 +32,14 @@ jobs:
         run: |
           EAS_SKIP_AUTO_FINGERPRINT=1 npx expo prebuild --platform android --clean
 
+      - name: Bypass JCenter Failure
+        run: |
+          if [ -d "android" ]; then
+            sed -i '/jcenter()/d' android/build.gradle 2>/dev/null || true
+            sed -i '/jcenter()/d' android/settings.gradle 2>/dev/null || true
+            sed -i '/jcenter()/d' android/app/build.gradle 2>/dev/null || true
+          fi
+
       - name: Disable Sentry Compilation
         run: |
           sed -i '/apply from: "..\/node_modules\/@sentry\/react-native\/sentry.gradle"/i project.ext.sentry = [ disableAutoUpload: true ]' android/app/build.gradle
