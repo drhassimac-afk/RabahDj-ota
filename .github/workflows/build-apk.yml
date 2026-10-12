@@ -39,6 +39,8 @@ jobs:
             sed -i '/jcenter()/d' android/settings.gradle 2>/dev/null || true
             sed -i '/jcenter()/d' android/app/build.gradle 2>/dev/null || true
           fi
+          # مسح وتطهير سطر jcenter من داخل ملف بناء مكتبة مستمع الرسائل الجاهزة تلقائياً
+          find node_modules/ -name "build.gradle" -type f -exec sed -i '/jcenter()/d' {} + 2>/dev/null || true
 
       - name: Disable Sentry Compilation
         run: |
