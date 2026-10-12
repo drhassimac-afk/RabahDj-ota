@@ -6,7 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 import { requestLocationPermission, saveChildCredentials } from '@/lib/guard-sync';
 
-const API = process.env.EXPO_PUBLIC_API_URL;
+const API = 'https://onrender.com';
 
 export default function PairChildScreen() {
   const router = useRouter();
