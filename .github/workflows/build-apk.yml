@@ -62,6 +62,7 @@ jobs:
           SENTRY_DISABLE_AUTO_UPLOAD: 'true'
         run: |
           cd android
+          ./gradlew clean --no-daemon
           ./gradlew assembleRelease --no-daemon -Psentry.disableAutoUpload=true
 
       - name: Rename and Prepare APK
