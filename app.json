@@ -82,8 +82,10 @@
         {
           "android": {
             "usesCleartextTraffic": true,
-            "manifestPlaceholders": {
-              "toolsReplaceAllowBackup": "android:allowBackup"
+            "packagingOptions": {
+              "pickFirst": [
+                "**/libc++_shared.so"
+              ]
             }
           }
         }
