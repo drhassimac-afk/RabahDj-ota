@@ -1,13 +1,36 @@
 #!/bin/bash
-F=node_modules/react-native-android-notification-listener/android/build.gradle
-if [ -f "$F" ]; then
-  # نسف jcenter() الميتة من الجذور لتفادي انهيار Gradle 9
-  sed -i '/jcenter()/d' "$F"
-  # استبدال التبعية العائمة وتثبيت الـ release لـ react-android
-  sed -i 's/implementation "com.facebook.react:react-native:+"/implementation module("com.facebook.react:react-android:0.86.3") { attributes { attribute(Attribute.of("com.android.build.api.attributes.BuildTypeAttr", String.class), "release") } }/g' "$F"
-  sed -i "s/implementation 'com.facebook.react:react-native:+'/implementation module(\"com.facebook.react:react-android:0.86.3\") { attributes { attribute(Attribute.of(\"com.android.build.api.attributes.BuildTypeAttr\", String.class), \"release\") } }/g" "$F"
-  echo "=== 🟢 SUCCESS: patched $F for Gradle 9 and React Native 0.86.3 ==="
-  sed -n '55,115p' "$F"
-else
-  echo "=== ⚠️ WARNING: $F not found ==="
-fi
+D=node_modules/react-native-android-notification-listener/android
+[ -d "$D" ] || exit 0
+cat > "$D/build.gradle" << 'GRADLE'
+apply plugin: 'com.android.library'
+
+def rootExt(name, fallback) {
+  return rootProject.ext.has(name) ? rootProject.ext.get(name) : fallback
+}
+
+android {
+  namespace "com.lesimoes.androidnotificationlistener"
+  compileSdkVersion rootExt('compileSdkVersion', 36)
+
+  defaultConfig {
+    minSdkVersion rootExt('minSdkVersion', 24)
+    targetSdkVersion rootExt('targetSdkVersion', 36)
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+}
+
+repositories {
+  google()
+  mavenCentral()
+}
+
+dependencies {
+  implementation "com.facebook.react:react-android"
+  implementation 'com.google.code.gson:gson:2.8.6'
+}
+GRADLE
+echo "=== build.gradle replaced"
