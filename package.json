@@ -67,7 +67,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "eas-build-post-install": "bash ./fix-notification-listener.sh"
   },
   "private": true,
   "expo": {
