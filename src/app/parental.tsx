@@ -12,8 +12,8 @@ export default function ParentalScreen() {
   const [isConfigured, setIsConfigured] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 🟢 النطاق السحابي الفعلي الفرعي الخاص بمشروعك بدقة كبسولة الحسم
-  const BASE_URL = 'https://rabahdj-parental-backend.onrender.com';
+  // 🟢 النطاق السحابي الفعلي الفرعي الخاص بمشروعك بدقة لإلغاء الـ 405 تماماً
+  const BASE_URL = 'https://onrender.com';
 
   useEffect(() => {
     async function loadCredentials() {
@@ -105,7 +105,7 @@ export default function ParentalScreen() {
         return;
       }
 
-      // حفظ السجلات وتأمين العبور للوحة التحكم
+      // حفظ السجلات وتأمين العبور للوحة التحكم الأبوية
       await SecureStore.setItemAsync('userToken', data.token);
       await SecureStore.setItemAsync('username', username.trim());
       await SecureStore.setItemAsync('password', password);
