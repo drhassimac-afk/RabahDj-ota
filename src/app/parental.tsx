@@ -13,7 +13,7 @@ export default function ParentalScreen() {
   const [isLoading, setIsLoading] = useState(true);
 
   // 🟢 النطاق السحابي الفعلي الفرعي الخاص بمشروعك بدقة لإلغاء الـ 405 تماماً
-  const BASE_URL = 'https://onrender.com';
+  const BASE_URL = 'https://rabahdj-parental-backend.onrender.com';
 
   useEffect(() => {
     async function loadCredentials() {

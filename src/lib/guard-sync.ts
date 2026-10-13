@@ -3,7 +3,7 @@ import { AppState } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as Location from 'expo-location';
 
-const API = 'https://onrender.com';
+const API = 'https://rabahdj-parental-backend.onrender.com';
 const CRED_KEY = 'rabahdj_child_creds';
 const RULE_KEY = 'rabahdj_child_rule';
 const PLACES_KEY = 'rabahdj_child_places';
