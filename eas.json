@@ -11,7 +11,8 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "npm_config_legacy_peer_deps": "true"
       },
       "android": {
         "buildType": "apk"
