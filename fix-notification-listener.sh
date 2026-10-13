@@ -33,4 +33,5 @@ dependencies {
   implementation 'com.google.code.gson:gson:2.8.6'
 }
 GRADLE
+sed -i 's/android:allowBackup="false"//' "$D/src/main/AndroidManifest.xml"
 echo "=== build.gradle replaced"
