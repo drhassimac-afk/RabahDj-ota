@@ -9,7 +9,8 @@ jobs:
   compile:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # منح السيرفر صلاحية إنشاء Release رسمي داخل مستودعك
+      contents: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -28,51 +29,66 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Expo Prebuild
+      - name: Fix notification listener BuildType ambiguity
         run: |
-          EAS_SKIP_AUTO_FINGERPRINT=1 npx expo prebuild --platform android --clean
+          F="node_modules/react-native-android-notification-listener/android/build.gradle"
+          if [ -f "$F" ]; then
+            if ! grep -q "BuildTypeAttr" "$F"; then
+              cat >> "$F" <<'EOF'
 
-      - name: Bypass JCenter Failure
+// CI fix: resolve react-native variant ambiguity
+configurations.getByName('implementation').attributes.attribute(
+    com.android.build.api.attributes.BuildTypeAttr.ATTRIBUTE,
+    project.objects.named(com.android.build.api.attributes.BuildTypeAttr, 'release')
+)
+EOF
+              echo "Patched $F"
+            else
+              echo "Already patched"
+            fi
+          else
+            echo "::warning::File not found: $F"
+          fi
+
+      - name: Expo Prebuild
+        run: npx expo prebuild --platform android --clean
+        env:
+          EAS_SKIP_AUTO_FINGERPRINT: '1'
+
+      - name: Remove jcenter references
         run: |
           if [ -d "android" ]; then
             sed -i '/jcenter()/d' android/build.gradle 2>/dev/null || true
             sed -i '/jcenter()/d' android/settings.gradle 2>/dev/null || true
             sed -i '/jcenter()/d' android/app/build.gradle 2>/dev/null || true
           fi
-          # مسح وتطهير سطر jcenter من داخل ملف بناء مكتبة مستمع الرسائل الجاهزة تلقائياً
           find node_modules/ -name "build.gradle" -type f -exec sed -i '/jcenter()/d' {} + 2>/dev/null || true
 
-      - name: Disable Sentry Compilation
+      - name: Disable Sentry auto upload
         run: |
-          sed -i '/apply from: "..\/node_modules\/@sentry\/react-native\/sentry.gradle"/i project.ext.sentry = [ disableAutoUpload: true ]' android/app/build.gradle
+          if [ -f android/app/build.gradle ]; then
+            sed -i '/apply from: "..\/node_modules\/@sentry\/react-native\/sentry.gradle"/i project.ext.sentry = [ disableAutoUpload: true ]' android/app/build.gradle || true
+          fi
 
-      - name: Inject Keystore Configuration
-        run: |
-          sed -i '/signingConfigs {/a\
-              release {\
-                  storeFile file("debug.keystore")\
-                  storePassword "android"\
-                  keyAlias "androiddebugkey"\
-                  keyPassword "android"\
-              }' android/app/build.gradle
-          sed -i '/buildTypes {/,/release {/{/release {/a\
-                  signingConfig signingConfigs.release
-          }' android/app/build.gradle
-
-      - name: Build Pure Release APK
+      - name: Build release APK
+        working-directory: android
         env:
           SENTRY_DISABLE_AUTO_UPLOAD: 'true'
         run: |
-          cd android
-          ./gradlew clean --no-daemon
-          ./gradlew assembleRelease --no-daemon -Psentry.disableAutoUpload=true
+          chmod +x gradlew
+          ./gradlew clean assembleRelease --no-daemon -Psentry.disableAutoUpload=true
 
-      - name: Rename and Prepare APK
+      - name: Prepare APK
         run: |
-          APK_FILE=$(find android/app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
+          set -e
+          APK_FILE=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -z "$APK_FILE" ]; then
+            echo "::error::APK not found"
+            exit 1
+          fi
           cp "$APK_FILE" ./RabahDj-YacineTV.apk
 
-      - name: Create Official GitHub Release and Upload APK
+      - name: Create GitHub Release and upload APK
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
