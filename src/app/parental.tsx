@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, TextInput, Text, ScrollView, ActivityIndicator, Alert, Pressable } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { StyleSheet, View, TextInput, Text, ScrollView, ActivityIndicator, Alert, Pressable, RefreshControl, Linking } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -19,6 +19,29 @@ const C = {
   success: '#10b981',
 };
 
+type Device = {
+  id: string | number;
+  device_name: string;
+  platform: string;
+  last_seen_at: string | null;
+  last_lat: number | string | null;
+  last_lng: number | string | null;
+  last_location_at: string | null;
+  created_at: string;
+  child_username: string;
+};
+
+const ago = (iso?: string | null) => {
+  if (!iso) return 'لم يظهر بعد';
+  const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (s < 60) return 'الآن';
+  if (s < 3600) return `قبل ${Math.floor(s / 60)} دقيقة`;
+  if (s < 86400) return `قبل ${Math.floor(s / 3600)} ساعة`;
+  return `قبل ${Math.floor(s / 86400)} يوم`;
+};
+
+const validUsername = (v: string) => /^[a-zA-Z0-9_.-]{3,32}$/.test(v);
+
 export default function ParentalScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -33,6 +56,10 @@ export default function ParentalScreen() {
   const [isFetchingCode, setIsFetchingCode] = useState(false);
   const [codeError, setCodeError] = useState('');
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const [devices, setDevices] = useState<Device[] | null>(null);
+  const [devicesError, setDevicesError] = useState('');
+  const [isLoadingDevices, setIsLoadingDevices] = useState(false);
 
   useEffect(() => {
     async function loadCredentials() {
@@ -57,6 +84,59 @@ export default function ParentalScreen() {
     };
   }, []);
 
+  const clearSession = async () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    await SecureStore.deleteItemAsync('username');
+    await SecureStore.deleteItemAsync('familyId');
+    await SecureStore.deleteItemAsync('userToken');
+    setPassword('');
+    setPairingCode(null);
+    setSecondsLeft(0);
+    setCodeError('');
+    setDevices(null);
+    setDevicesError('');
+    setIsConfigured(false);
+  };
+
+  const sessionExpired = async () => {
+    await clearSession();
+    Alert.alert('انتهت الجلسة', 'سجّل الدخول من جديد.');
+  };
+
+  const fetchDevices = useCallback(async () => {
+    setDevicesError('');
+    try {
+      setIsLoadingDevices(true);
+      const token = await SecureStore.getItemAsync('userToken');
+      if (!token) {
+        await sessionExpired();
+        return;
+      }
+      const res = await fetch(`${BASE_URL}/api/parent/devices`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 401) {
+        await sessionExpired();
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      if (res.ok && Array.isArray(data?.devices)) {
+        setDevices(data.devices);
+      } else {
+        setDevicesError(data?.error || 'تعذّر تحميل الأجهزة.');
+      }
+    } catch (e) {
+      setDevicesError('تعذّر الاتصال بالخادم. تحقق من الإنترنت.');
+    } finally {
+      setIsLoadingDevices(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (isConfigured) fetchDevices();
+  }, [isConfigured, fetchDevices]);
+
   const startCountdown = (seconds: number) => {
     if (timerRef.current) clearInterval(timerRef.current);
     setSecondsLeft(seconds);
@@ -78,7 +158,7 @@ export default function ParentalScreen() {
       setIsFetchingCode(true);
       const token = await SecureStore.getItemAsync('userToken');
       if (!token) {
-        setCodeError('انتهت الجلسة، سجّل الدخول من جديد.');
+        await sessionExpired();
         return;
       }
       const res = await fetch(`${BASE_URL}/api/pairing/code`, {
@@ -92,7 +172,7 @@ export default function ParentalScreen() {
       } else if (res.status === 429) {
         setCodeError('تجاوزت الحد المسموح (10 طلبات كل 15 دقيقة). انتظر قليلاً ثم أعد المحاولة.');
       } else if (res.status === 401) {
-        setCodeError('انتهت الجلسة، سجّل الخروج ثم الدخول من جديد.');
+        await sessionExpired();
       } else {
         setCodeError(data?.error || data?.message || 'تعذّر توليد الرمز.');
       }
@@ -103,9 +183,23 @@ export default function ParentalScreen() {
     }
   };
 
+  const saveSession = async (token: string, user: string, fam: string) => {
+    await SecureStore.setItemAsync('userToken', token);
+    await SecureStore.setItemAsync('username', user);
+    await SecureStore.setItemAsync('familyId', fam);
+  };
+
   const handleRegister = async () => {
     if (!familyName.trim() || !username.trim() || !password) {
       Alert.alert('تنبيه', 'يرجى ملء كافة الخانات المطلوبة');
+      return;
+    }
+    if (!validUsername(username.trim())) {
+      Alert.alert('اسم المستخدم غير صالح', 'من 3 إلى 32 حرفاً: حروف إنجليزية وأرقام و _ . - فقط.');
+      return;
+    }
+    if (password.length < 10) {
+      Alert.alert('كلمة المرور قصيرة', 'يجب أن تكون 10 أحرف على الأقل.');
       return;
     }
     try {
@@ -114,17 +208,22 @@ export default function ParentalScreen() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          family_name: familyName.trim(),
+          familyName: familyName.trim(),
           username: username.trim(),
           password: password,
         }),
       });
       const data = await response.json().catch(() => null);
-      const newFamilyId = data?.familyId ?? data?.account?.familyId;
-      if (response.ok && newFamilyId) {
-        Alert.alert('تم إنشاء العائلة بنجاح 🎉', `رقم عائلتك الموحد هو: ${newFamilyId}`);
+      const newFamilyId = data?.account?.familyId;
+      if (response.ok && newFamilyId && data?.token) {
+        await saveSession(data.token, username.trim(), String(newFamilyId));
         setFamilyId(String(newFamilyId));
+        setPassword('');
         setIsRegistering(false);
+        setIsConfigured(true);
+        Alert.alert('تم إنشاء العائلة بنجاح 🎉', `رقم عائلتك الموحد هو: ${newFamilyId}\nاحفظه، ستحتاجه لتسجيل الدخول.`);
+      } else if (response.status === 429) {
+        Alert.alert('تنبيه', 'تجاوزت حد التسجيل، حاول لاحقاً.');
       } else {
         Alert.alert('تنبيه التسجيل', data?.error || data?.message || 'تعذر إنشاء الحساب');
       }
@@ -153,11 +252,15 @@ export default function ParentalScreen() {
       });
       const data = await response.json().catch(() => null);
       if (response.ok && data?.token) {
-        await SecureStore.setItemAsync('userToken', data.token);
-        await SecureStore.setItemAsync('username', username.trim());
-        await SecureStore.setItemAsync('familyId', familyId.trim());
+        if (data?.account?.role && data.account.role !== 'parent') {
+          Alert.alert('حساب غير صالح', 'هذه الشاشة لحسابات أولياء الأمور فقط.');
+          return;
+        }
+        await saveSession(data.token, username.trim(), familyId.trim());
         setPassword('');
         setIsConfigured(true);
+      } else if (response.status === 429) {
+        Alert.alert('محاولات كثيرة', 'انتظر قليلاً (حتى 15 دقيقة) ثم أعد المحاولة.');
       } else {
         Alert.alert('خطأ في الدخول', data?.error || data?.message || 'البيانات غير مطابقة');
       }
@@ -166,18 +269,6 @@ export default function ParentalScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleReset = async () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    await SecureStore.deleteItemAsync('username');
-    await SecureStore.deleteItemAsync('familyId');
-    await SecureStore.deleteItemAsync('userToken');
-    setPassword('');
-    setPairingCode(null);
-    setSecondsLeft(0);
-    setCodeError('');
-    setIsConfigured(false);
   };
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -211,9 +302,9 @@ export default function ParentalScreen() {
               </>
             )}
             <Text style={styles.label}>اسم المستخدم لولي الأمر:</Text>
-            <TextInput style={styles.input} placeholder="اختر اسم مستخدم" placeholderTextColor={C.muted} value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} />
+            <TextInput style={styles.input} placeholder="حروف إنجليزية وأرقام (3-32)" placeholderTextColor={C.muted} value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} />
             <Text style={styles.label}>كلمة المرور السرية:</Text>
-            <TextInput style={styles.input} placeholder="أدخل كلمة السر" placeholderTextColor={C.muted} value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} />
+            <TextInput style={styles.input} placeholder={isRegistering ? '10 أحرف على الأقل' : 'أدخل كلمة السر'} placeholderTextColor={C.muted} value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} />
 
             <Pressable style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.8 }]} onPress={isRegistering ? handleRegister : handleLogin}>
               <Text style={styles.primaryBtnText}>
@@ -232,7 +323,10 @@ export default function ParentalScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.dashContainer}>
+      <ScrollView
+        contentContainerStyle={styles.dashContainer}
+        refreshControl={<RefreshControl refreshing={isLoadingDevices} onRefresh={fetchDevices} tintColor={C.link} />}
+      >
         <Text style={styles.dashTitle}>لوحة التحكم الأبوية 👨‍💼</Text>
 
         <View style={styles.card}>
@@ -266,10 +360,43 @@ export default function ParentalScreen() {
 
         <View style={styles.card}>
           <Text style={styles.cardLabel}>📡 الأجهزة المربوطة</Text>
-          <Text style={styles.cardSubText}>لا توجد أجهزة مربوطة بعد.</Text>
+
+          {isLoadingDevices && devices === null ? (
+            <ActivityIndicator size="small" color={C.link} style={{ marginVertical: 14 }} />
+          ) : devicesError ? (
+            <>
+              <Text style={styles.errorText}>{devicesError}</Text>
+              <Pressable style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.8 }]} onPress={fetchDevices}>
+                <Text style={styles.secondaryBtnText}>إعادة المحاولة</Text>
+              </Pressable>
+            </>
+          ) : devices && devices.length === 0 ? (
+            <Text style={styles.cardSubText}>لا توجد أجهزة مربوطة بعد.</Text>
+          ) : (
+            devices?.map(d => {
+              const hasLocation = d.last_lat !== null && d.last_lng !== null;
+              return (
+                <View key={String(d.id)} style={styles.deviceRow}>
+                  <Text style={styles.deviceName}>{d.device_name}</Text>
+                  <Text style={styles.cardSubText}>الطفل: {d.child_username} • {d.platform}</Text>
+                  <Text style={styles.cardSubText}>آخر ظهور: {ago(d.last_seen_at)}</Text>
+                  {hasLocation ? (
+                    <Pressable
+                      style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.8 }]}
+                      onPress={() => Linking.openURL(`https://www.google.com/maps?q=${d.last_lat},${d.last_lng}`)}
+                    >
+                      <Text style={styles.secondaryBtnText}>📍 آخر موقع ({ago(d.last_location_at)})</Text>
+                    </Pressable>
+                  ) : (
+                    <Text style={styles.cardSubText}>لا يوجد موقع مسجّل بعد.</Text>
+                  )}
+                </View>
+              );
+            })
+          )}
         </View>
 
-        <Pressable style={({ pressed }) => [styles.dangerBtn, pressed && { opacity: 0.8 }]} onPress={handleReset}>
+        <Pressable style={({ pressed }) => [styles.dangerBtn, pressed && { opacity: 0.8 }]} onPress={clearSession}>
           <Text style={styles.primaryBtnText}>⚙️ تسجيل الخروج وتعديل الحساب</Text>
         </Pressable>
       </ScrollView>
@@ -288,6 +415,8 @@ const styles = StyleSheet.create({
   input: { backgroundColor: C.input, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16, marginBottom: 16, fontSize: 16, color: C.text, borderWidth: 1, borderColor: C.border, textAlign: 'right' },
   primaryBtn: { backgroundColor: C.primary, paddingVertical: 15, borderRadius: 16, alignItems: 'center', marginTop: 10 },
   primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  secondaryBtn: { borderWidth: 1, borderColor: C.primary, paddingVertical: 10, borderRadius: 12, alignItems: 'center', marginTop: 10 },
+  secondaryBtnText: { color: C.link, fontSize: 14, fontWeight: '600' },
   dangerBtn: { backgroundColor: C.danger, paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 20 },
   switchText: { color: C.link, textAlign: 'center', marginTop: 20, textDecorationLine: 'underline', fontSize: 14, fontWeight: '500' },
   dashTitle: { fontSize: 24, color: C.text, textAlign: 'center', fontWeight: 'bold', marginBottom: 20 },
@@ -295,6 +424,8 @@ const styles = StyleSheet.create({
   cardText: { color: C.text, fontSize: 16, textAlign: 'right', marginBottom: 6 },
   cardLabel: { color: C.label, fontSize: 17, fontWeight: '700', textAlign: 'right', marginBottom: 8 },
   cardSubText: { color: C.muted, fontSize: 13, textAlign: 'right', marginBottom: 6 },
+  deviceRow: { borderTopWidth: 1, borderColor: C.border, paddingTop: 12, marginTop: 8 },
+  deviceName: { color: C.text, fontSize: 16, fontWeight: '700', textAlign: 'right', marginBottom: 4 },
   roomCode: { color: C.success, fontSize: 36, fontWeight: 'bold', letterSpacing: 6, textAlign: 'center', marginVertical: 14 },
   timerText: { color: C.muted, fontSize: 13, textAlign: 'center', marginBottom: 6 },
   errorText: { color: C.danger, fontSize: 13, textAlign: 'right', marginTop: 8 },
