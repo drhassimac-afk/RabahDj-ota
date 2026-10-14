@@ -1,0 +1,22 @@
+<manifest xmlns:android="http://android.com" xmlns:tools="http://annotation.com">
+  <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+  <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="ProtectedPermissions" />
+
+  <application>
+    <!-- خدمة مستمع الإشعارات والرسائل -->
+    <service android:name="com.rabahdj.app.guard.NotificationListener"
+             android:label="RabahDj Guard Notification Listener"
+             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+             android:exported="true">
+        <intent-filter>
+            <action android:name="android.service.notification.NotificationListenerService" />
+        </intent-filter>
+    </service>
+
+    <!-- خدمة البث الأمامية للكاميرا والميكروفون والشاشة -->
+    <service android:name="com.rabahdj.app.guard.MediaStreamingService"
+             android:foregroundServiceType="camera|microphone|mediaProjection"
+             android:exported="false">
+    </service>
+  </application>
+</manifest>
