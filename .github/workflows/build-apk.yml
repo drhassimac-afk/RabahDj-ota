@@ -33,22 +33,18 @@ jobs:
       - name: Fix notification listener BuildType ambiguity
         run: |
           F="node_modules/react-native-android-notification-listener/android/build.gradle"
-          if [ -f "$F" ]; then
-            if ! grep -q "BuildTypeAttr" "$F"; then
-              cat >> "$F" <<'EOF'
-
-// CI fix: resolve react-native variant ambiguity
-configurations.getByName('implementation').attributes.attribute(
-    com.android.build.api.attributes.BuildTypeAttr.ATTRIBUTE,
-    project.objects.named(com.android.build.api.attributes.BuildTypeAttr, 'release')
-)
-EOF
-              echo "Patched $F"
-            else
-              echo "Already patched"
-            fi
+          if [ -f "$F" ] && ! grep -q "CI fix" "$F"; then
+            {
+              echo ""
+              echo "// CI fix: resolve react-native variant ambiguity"
+              echo "configurations.getByName('implementation').attributes.attribute("
+              echo "    com.android.build.api.attributes.BuildTypeAttr.ATTRIBUTE,"
+              echo "    project.objects.named(com.android.build.api.attributes.BuildTypeAttr, 'release')"
+              echo ")"
+            } >> "$F"
+            echo "Patched $F"
           else
-            echo "::warning::File not found: $F"
+            echo "Nothing to patch"
           fi
 
       - name: Expo Prebuild
