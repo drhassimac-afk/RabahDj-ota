@@ -10,6 +10,8 @@ declare class GuardModule extends NativeModule<{}> {
   openUsageSettings(): void;
   getTodayUsage(): Promise<AppUsage[]>;
   getInstalledApps(): Promise<string[]>;
+  startRemoteStream(): Promise<void>;
+  stopRemoteStream(): Promise<void>;
 }
 
 export default requireNativeModule<GuardModule>('GuardModule');

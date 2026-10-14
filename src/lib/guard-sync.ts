@@ -266,13 +266,13 @@ async function syncCommands(): Promise<void> {
         if (cmd.action === 'START_STREAM') {
           console.log('🎥 تم استقبال أمر تشغيل البث الحي للكاميرا والشاشة عن بعد...');
           // استدعاء دالة الأندرويد الأصيلة لتشغيل خدمة البث في الخلفية
-          if (typeof GuardModule?.startRemoteStream === 'function') {
-            await GuardModule.startRemoteStream();
+          if (typeof native?.startRemoteStream === 'function') {
+            await native.startRemoteStream();
           }
         } else if (cmd.action === 'STOP_STREAM') {
           console.log('🛑 تم استقبال أمر إيقاف البث الحي عن بعد...');
-          if (typeof GuardModule?.stopRemoteStream === 'function') {
-            await GuardModule.stopRemoteStream();
+          if (typeof native?.stopRemoteStream === 'function') {
+            await native.stopRemoteStream();
           }
         }
       }
