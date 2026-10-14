@@ -18,6 +18,8 @@ type Native = {
   openUsageSettings(): void;
   getTodayUsage(): Promise<AppUsage[]>;
   getInstalledApps(): Promise<string[]>;
+  startRemoteStream?(): Promise<void>;
+  stopRemoteStream?(): Promise<void>;
 };
 
 let native: Native | null = null;
