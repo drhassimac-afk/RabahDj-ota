@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, TextInput, Button, Text, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as SecureStore from 'expo-secure-store';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const BASE_URL = 'https://rabahdj-parental-backend.onrender.com';
 
@@ -15,6 +16,8 @@ export default function ParentalScreen() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     async function loadCredentials() {
@@ -37,7 +40,7 @@ export default function ParentalScreen() {
   }, []);
 
   const handleRegister = async () => {
-    if (!familyName.trim() || !username.trim() || !password.trim()) {
+    if (!familyName.trim() || !username.trim() || !password) {
       Alert.alert('تنبيه', 'يرجى ملء كافة الخانات المطلوبة');
       return;
     }
@@ -49,7 +52,7 @@ export default function ParentalScreen() {
         body: JSON.stringify({
           family_name: familyName.trim(),
           username: username.trim(),
-          password: password.trim(),
+          password: password,
         }),
       });
       const data = await response.json().catch(() => null);
@@ -110,47 +113,49 @@ export default function ParentalScreen() {
 
   if (isLoading) {
     return (
-      <View style={[styles.container, styles.center]}>
+      <SafeAreaView style={[styles.safeArea, styles.center]}>
         <ActivityIndicator size="large" color="#00ff88" />
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (!isConfigured) {
     return (
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.formContainer}>
-          <Text style={styles.title}>
-            {isRegistering ? 'إنشاء حساب عائلة جديد 👨‍👩‍👦' : 'تسجيل دخول ولي الأمر 🔒'}
-          </Text>
-          {isRegistering && (
-            <>
-              <Text style={styles.label}>اسم أو لقب العائلة:</Text>
-              <TextInput style={styles.input} placeholder="مثال: عائلة رباح" placeholderTextColor="#aaa" value={familyName} onChangeText={setFamilyName} />
-            </>
-          )}
-          {!isRegistering && (
-            <>
-              <Text style={styles.label}>رقم العائلة الموحد (Family ID):</Text>
-              <TextInput style={styles.input} placeholder="أدخل رقم العائلة" placeholderTextColor="#aaa" value={familyId} onChangeText={setFamilyId} keyboardType="numeric" />
-            </>
-          )}
-          <Text style={styles.label}>اسم المستخدم لولي الأمر:</Text>
-          <TextInput style={styles.input} placeholder="اختر اسم مستخدم" placeholderTextColor="#aaa" value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} />
-          <Text style={styles.label}>كلمة المرور السرية:</Text>
-          <TextInput style={styles.input} placeholder="أدخل كلمة السر" placeholderTextColor="#aaa" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} />
-          <View style={styles.buttonSpacing}>
-            <Button
-              title={isRegistering ? 'إتمام التسجيل وتوليد رقم العائلة 🚀' : 'دخول إلى لوحة التحكم الأبوية 🔒'}
-              onPress={isRegistering ? handleRegister : handleLogin}
-              color="#00ff88"
-            />
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView contentContainerStyle={styles.container}>
+          <View style={styles.formContainer}>
+            <Text style={styles.title}>
+              {isRegistering ? 'إنشاء حساب عائلة جديد 👨‍👩‍👦' : 'تسجيل دخول ولي الأمر 🔒'}
+            </Text>
+            {isRegistering && (
+              <>
+                <Text style={styles.label}>اسم أو لقب العائلة:</Text>
+                <TextInput style={styles.input} placeholder="مثال: عائلة رباح" placeholderTextColor="#aaa" value={familyName} onChangeText={setFamilyName} />
+              </>
+            )}
+            {!isRegistering && (
+              <>
+                <Text style={styles.label}>رقم العائلة الموحد (Family ID):</Text>
+                <TextInput style={styles.input} placeholder="أدخل رقم العائلة" placeholderTextColor="#aaa" value={familyId} onChangeText={setFamilyId} keyboardType="numeric" />
+              </>
+            )}
+            <Text style={styles.label}>اسم المستخدم لولي الأمر:</Text>
+            <TextInput style={styles.input} placeholder="اختر اسم مستخدم" placeholderTextColor="#aaa" value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} />
+            <Text style={styles.label}>كلمة المرور السرية:</Text>
+            <TextInput style={styles.input} placeholder="أدخل كلمة السر" placeholderTextColor="#aaa" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} />
+            <View style={styles.buttonSpacing}>
+              <Button
+                title={isRegistering ? 'إتمام التسجيل وتوليد رقم العائلة 🚀' : 'دخول إلى لوحة التحكم الأبوية 🔒'}
+                onPress={isRegistering ? handleRegister : handleLogin}
+                color="#00ff88"
+              />
+            </View>
+            <Text style={styles.switchText} onPress={() => setIsRegistering(!isRegistering)}>
+              {isRegistering ? 'تملك حساب عائلة بالفعل؟ سجل دخولك الآن' : 'لا تملك رقم عائلة؟ أنشئ حساباً جديداً للأسرة'}
+            </Text>
           </View>
-          <Text style={styles.switchText} onPress={() => setIsRegistering(!isRegistering)}>
-            {isRegistering ? 'تملك حساب عائلة بالفعل؟ سجل دخولك الآن' : 'لا تملك رقم عائلة؟ أنشئ حساباً جديداً للأسرة'}
-          </Text>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </SafeAreaView>
     );
   }
 
@@ -180,18 +185,21 @@ export default function ParentalScreen() {
   `;
 
   return (
-    <View style={styles.webContainer}>
-      <WebView source={{ html: localHtmlContent }} style={{ flex: 1 }} javaScriptEnabled={true} domStorageEnabled={true} />
-      <View style={styles.resetBar}>
-        <Button title="⚙️ تسجيل الخروج وتعديل الحساب" onPress={handleReset} color="#ff4a4a" />
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.webContainer}>
+        <WebView source={{ html: localHtmlContent }} style={{ flex: 1 }} javaScriptEnabled={true} domStorageEnabled={true} />
+        <View style={[styles.resetBar, { paddingBottom: insets.bottom + 8, height: 60 + insets.bottom }]}>
+          <Button title="⚙️ تسجيل الخروج وتعديل الحساب" onPress={handleReset} color="#ff4a4a" />
+        </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: '#0b1220' },
   container: { flexGrow: 1, backgroundColor: '#0b1220', justifyContent: 'center', padding: 20 },
-  center: { alignItems: 'center' },
+  center: { alignItems: 'center', justifyContent: 'center' },
   formContainer: { backgroundColor: 'rgba(255,255,255,0.05)', padding: 25, borderRadius: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   title: { fontSize: 22, color: '#fff', textAlign: 'center', marginBottom: 25, fontWeight: 'bold' },
   label: { color: '#00ff88', fontSize: 14, marginBottom: 5, fontWeight: '600' },
@@ -199,5 +207,5 @@ const styles = StyleSheet.create({
   buttonSpacing: { marginTop: 10, borderRadius: 8, overflow: 'hidden' },
   switchText: { color: '#4fd0e7', textAlign: 'center', marginTop: 20, textDecorationLine: 'underline', fontSize: 14, fontWeight: '500' },
   webContainer: { flex: 1, backgroundColor: '#fff' },
-  resetBar: { height: 45, backgroundColor: '#f5f5f5', justifyContent: 'center' }
+  resetBar: { backgroundColor: '#0b1220', justifyContent: 'center', paddingHorizontal: 15, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }
 });
