@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, TextInput, Text, ScrollView, ActivityIndicator, Alert, Pressable } from 'react-native';
-import { WebView } from 'react-native-webview';
 import * as SecureStore from 'expo-secure-store';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const BASE_URL = 'https://rabahdj-parental-backend.onrender.com';
 
@@ -17,9 +16,8 @@ const C = {
   label: '#e2e8f0',
   muted: '#64748b',
   danger: '#ef4444',
+  success: '#10b981',
 };
-
-const esc = (s: string) => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 
 export default function ParentalScreen() {
   const [username, setUsername] = useState('');
@@ -30,7 +28,11 @@ export default function ParentalScreen() {
   const [isConfigured, setIsConfigured] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const insets = useSafeAreaInsets();
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  const [isFetchingCode, setIsFetchingCode] = useState(false);
+  const [codeError, setCodeError] = useState('');
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     async function loadCredentials() {
@@ -50,7 +52,56 @@ export default function ParentalScreen() {
       }
     }
     loadCredentials();
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
   }, []);
+
+  const startCountdown = (seconds: number) => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setSecondsLeft(seconds);
+    timerRef.current = setInterval(() => {
+      setSecondsLeft(prev => {
+        if (prev <= 1) {
+          if (timerRef.current) clearInterval(timerRef.current);
+          setPairingCode(null);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const generatePairingCode = async () => {
+    setCodeError('');
+    try {
+      setIsFetchingCode(true);
+      const token = await SecureStore.getItemAsync('userToken');
+      if (!token) {
+        setCodeError('انتهت الجلسة، سجّل الدخول من جديد.');
+        return;
+      }
+      const res = await fetch(`${BASE_URL}/api/pairing/code`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.code) {
+        setPairingCode(String(data.code));
+        startCountdown(Number(data.expiresInSeconds) || 600);
+      } else if (res.status === 429) {
+        setCodeError('تجاوزت الحد المسموح (10 طلبات كل 15 دقيقة). انتظر قليلاً ثم أعد المحاولة.');
+      } else if (res.status === 401) {
+        setCodeError('انتهت الجلسة، سجّل الخروج ثم الدخول من جديد.');
+      } else {
+        setCodeError(data?.error || data?.message || 'تعذّر توليد الرمز.');
+      }
+    } catch (e) {
+      setCodeError('تعذّر الاتصال بالخادم. تحقق من الإنترنت وأعد المحاولة.');
+    } finally {
+      setIsFetchingCode(false);
+    }
+  };
 
   const handleRegister = async () => {
     if (!familyName.trim() || !username.trim() || !password) {
@@ -69,12 +120,13 @@ export default function ParentalScreen() {
         }),
       });
       const data = await response.json().catch(() => null);
-      if (response.ok && data?.familyId) {
-        Alert.alert('تم إنشاء العائلة بنجاح 🎉', `رقم عائلتك الموحد هو: ${data.familyId}`);
-        setFamilyId(data.familyId.toString());
+      const newFamilyId = data?.familyId ?? data?.account?.familyId;
+      if (response.ok && newFamilyId) {
+        Alert.alert('تم إنشاء العائلة بنجاح 🎉', `رقم عائلتك الموحد هو: ${newFamilyId}`);
+        setFamilyId(String(newFamilyId));
         setIsRegistering(false);
       } else {
-        Alert.alert('تنبيه التسجيل', data?.error || data?.message || 'تعذر الإنشاء');
+        Alert.alert('تنبيه التسجيل', data?.error || data?.message || 'تعذر إنشاء الحساب');
       }
     } catch (err) {
       Alert.alert('خطأ', 'تعذر الوصول إلى الخادم');
@@ -107,7 +159,7 @@ export default function ParentalScreen() {
         setPassword('');
         setIsConfigured(true);
       } else {
-        Alert.alert('خطأ في الدخول', data?.error || data?.message || 'رقم العائلة أو البيانات غير مطابقة');
+        Alert.alert('خطأ في الدخول', data?.error || data?.message || 'البيانات غير مطابقة');
       }
     } catch (e) {
       Alert.alert('خطأ شبكي', 'تعذّر الاتصال بالسيرفر');
@@ -117,12 +169,18 @@ export default function ParentalScreen() {
   };
 
   const handleReset = async () => {
+    if (timerRef.current) clearInterval(timerRef.current);
     await SecureStore.deleteItemAsync('username');
     await SecureStore.deleteItemAsync('familyId');
     await SecureStore.deleteItemAsync('userToken');
     setPassword('');
+    setPairingCode(null);
+    setSecondsLeft(0);
+    setCodeError('');
     setIsConfigured(false);
   };
+
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   if (isLoading) {
     return (
@@ -157,10 +215,7 @@ export default function ParentalScreen() {
             <Text style={styles.label}>كلمة المرور السرية:</Text>
             <TextInput style={styles.input} placeholder="أدخل كلمة السر" placeholderTextColor={C.muted} value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} />
 
-            <Pressable
-              style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.8 }]}
-              onPress={isRegistering ? handleRegister : handleLogin}
-            >
+            <Pressable style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.8 }]} onPress={isRegistering ? handleRegister : handleLogin}>
               <Text style={styles.primaryBtnText}>
                 {isRegistering ? 'إتمام التسجيل وتوليد رقم العائلة' : 'دخول إلى لوحة التحكم الأبوية'}
               </Text>
@@ -175,44 +230,49 @@ export default function ParentalScreen() {
     );
   }
 
-  const localHtmlContent = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <style>
-        body { font-family: system-ui; background: ${C.bg}; color: #fff; padding: 20px; text-align: center; direction: rtl; }
-        .card { background: ${C.card}; padding: 20px; border-radius: 16px; margin-top: 20px; border: 1px solid ${C.primary}; }
-        h1 { color: #fff; font-size: 24px; font-weight: 700; }
-        .demo-badge { background: #f59e0b; color: #000; padding: 5px 12px; border-radius: 8px; font-weight: bold; font-size: 12px; display: inline-block; margin-bottom: 10px; }
-      </style>
-    </head>
-    <body>
-      <div class="demo-badge">⚠️ واجهة عرض تجريبية مؤقتة</div>
-      <h1>لوحة التحكم الأبوية 👨‍💼</h1>
-      <div class="card">
-        <p>مرحباً بك يا <b>${esc(username)}</b></p>
-        <p>رقم العائلة الموحد: <b style="color:${C.link}">${esc(familyId)}</b></p>
-      </div>
-      <p style="font-size: 13px; color: ${C.muted}; margin-top: 30px;">بانتظار ربط مسارات جلب بيانات الأجهزة الفعلية...</p>
-    </body>
-    </html>
-  `;
-
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.webContainer}>
-        <WebView source={{ html: localHtmlContent }} style={{ flex: 1, backgroundColor: C.bg }} javaScriptEnabled={true} domStorageEnabled={true} />
-        <View style={[styles.resetBar, { paddingBottom: insets.bottom + 8 }]}>
+      <ScrollView contentContainerStyle={styles.dashContainer}>
+        <Text style={styles.dashTitle}>لوحة التحكم الأبوية 👨‍💼</Text>
+
+        <View style={styles.card}>
+          <Text style={styles.cardText}>مرحباً بك يا <Text style={{ color: C.link, fontWeight: 'bold' }}>{username}</Text></Text>
+          <Text style={styles.cardText}>رقم العائلة الموحد: <Text style={{ color: C.success, fontWeight: 'bold' }}>{familyId}</Text></Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>🔑 رمز ربط جهاز الطفل</Text>
+          <Text style={styles.cardSubText}>ولّد رمزاً واكتبه في هاتف الطفل. الرمز صالح 10 دقائق ويُستخدم مرة واحدة.</Text>
+
+          {isFetchingCode ? (
+            <ActivityIndicator size="small" color={C.link} style={{ marginVertical: 18 }} />
+          ) : pairingCode ? (
+            <>
+              <Text style={styles.roomCode} selectable>{pairingCode}</Text>
+              <Text style={styles.timerText}>ينتهي خلال {fmt(secondsLeft)}</Text>
+            </>
+          ) : null}
+
+          {!!codeError && <Text style={styles.errorText}>{codeError}</Text>}
+
           <Pressable
-            style={({ pressed }) => [styles.dangerBtn, pressed && { opacity: 0.8 }]}
-            onPress={handleReset}
+            style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.8 }, isFetchingCode && { opacity: 0.5 }]}
+            onPress={generatePairingCode}
+            disabled={isFetchingCode}
           >
-            <Text style={styles.primaryBtnText}>⚙️ تسجيل الخروج وتعديل الحساب</Text>
+            <Text style={styles.primaryBtnText}>{pairingCode ? 'توليد رمز جديد' : 'توليد رمز الربط'}</Text>
           </Pressable>
         </View>
-      </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>📡 الأجهزة المربوطة</Text>
+          <Text style={styles.cardSubText}>لا توجد أجهزة مربوطة بعد.</Text>
+        </View>
+
+        <Pressable style={({ pressed }) => [styles.dangerBtn, pressed && { opacity: 0.8 }]} onPress={handleReset}>
+          <Text style={styles.primaryBtnText}>⚙️ تسجيل الخروج وتعديل الحساب</Text>
+        </Pressable>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -220,6 +280,7 @@ export default function ParentalScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: C.bg },
   container: { flexGrow: 1, backgroundColor: C.bg, justifyContent: 'center', padding: 20 },
+  dashContainer: { flexGrow: 1, backgroundColor: C.bg, padding: 20, paddingBottom: 30 },
   center: { alignItems: 'center', justifyContent: 'center' },
   formContainer: { backgroundColor: C.card, padding: 25, borderRadius: 24, borderWidth: 1, borderColor: C.border },
   title: { fontSize: 22, color: C.text, textAlign: 'center', marginBottom: 25, fontWeight: 'bold' },
@@ -227,8 +288,14 @@ const styles = StyleSheet.create({
   input: { backgroundColor: C.input, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16, marginBottom: 16, fontSize: 16, color: C.text, borderWidth: 1, borderColor: C.border, textAlign: 'right' },
   primaryBtn: { backgroundColor: C.primary, paddingVertical: 15, borderRadius: 16, alignItems: 'center', marginTop: 10 },
   primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  dangerBtn: { backgroundColor: C.danger, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+  dangerBtn: { backgroundColor: C.danger, paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 20 },
   switchText: { color: C.link, textAlign: 'center', marginTop: 20, textDecorationLine: 'underline', fontSize: 14, fontWeight: '500' },
-  webContainer: { flex: 1, backgroundColor: C.bg },
-  resetBar: { backgroundColor: C.bg, paddingHorizontal: 15, paddingTop: 10, borderTopWidth: 1, borderColor: C.border }
+  dashTitle: { fontSize: 24, color: C.text, textAlign: 'center', fontWeight: 'bold', marginBottom: 20 },
+  card: { backgroundColor: C.card, padding: 20, borderRadius: 20, borderWidth: 1, borderColor: C.border, marginBottom: 16 },
+  cardText: { color: C.text, fontSize: 16, textAlign: 'right', marginBottom: 6 },
+  cardLabel: { color: C.label, fontSize: 17, fontWeight: '700', textAlign: 'right', marginBottom: 8 },
+  cardSubText: { color: C.muted, fontSize: 13, textAlign: 'right', marginBottom: 6 },
+  roomCode: { color: C.success, fontSize: 36, fontWeight: 'bold', letterSpacing: 6, textAlign: 'center', marginVertical: 14 },
+  timerText: { color: C.muted, fontSize: 13, textAlign: 'center', marginBottom: 6 },
+  errorText: { color: C.danger, fontSize: 13, textAlign: 'right', marginTop: 8 },
 });
