@@ -47,6 +47,13 @@ jobs:
             echo "Nothing to patch"
           fi
 
+      - name: Fix Gradle 9 compatibility in notification listener
+        run: |
+          F="node_modules/react-native-android-notification-listener/android/build.gradle"
+          if [ -f "$F" ]; then
+            sed -i -E 's/^([[:space:]]*)classifier[[:space:]]*=?[[:space:]]*/\1archiveClassifier = /' "$F"
+          fi
+
       - name: Expo Prebuild
         run: npx expo prebuild --platform android --clean
         env:
