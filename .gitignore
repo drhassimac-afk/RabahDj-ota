@@ -38,3 +38,8 @@ yarn-error.*
 .env*
 config.json
 credentials.json
+
+# local build artifacts
+android/
+build.log
+modules/guard-module/android/build/
