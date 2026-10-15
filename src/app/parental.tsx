@@ -1,432 +1,673 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { StyleSheet, View, TextInput, Text, ScrollView, ActivityIndicator, Alert, Pressable, RefreshControl, Linking } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator, Alert, SafeAreaView, ScrollView,
+  StyleSheet, Switch, Text, TextInput, TouchableOpacity, View,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { Linking } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-const BASE_URL = 'https://rabahdj-parental-backend.onrender.com';
+const API = 'https://rabahdj-parental-backend.onrender.com';
+const TOKEN_KEY = 'rabahdj_parental_token';
 
-const C = {
-  bg: '#0b1220',
-  card: '#111827',
-  input: '#0d1626',
-  border: '#1e293b',
-  primary: '#2563eb',
-  link: '#60a5fa',
-  text: '#ffffff',
-  label: '#e2e8f0',
-  muted: '#64748b',
-  danger: '#ef4444',
-  success: '#10b981',
-};
-
-type Device = {
-  id: string | number;
-  device_name: string;
-  platform: string;
-  last_seen_at: string | null;
-  last_lat: number | string | null;
-  last_lng: number | string | null;
-  last_location_at: string | null;
-  created_at: string;
+type Rule = {
+  child_account_id: string;
   child_username: string;
+  daily_limit_minutes: number;
+  bedtime_start: string;
+  bedtime_end: string;
+  timezone: string;
+  enabled: boolean;
 };
-
-const ago = (iso?: string | null) => {
-  if (!iso) return 'لم يظهر بعد';
-  const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
-  if (s < 60) return 'الآن';
-  if (s < 3600) return `قبل ${Math.floor(s / 60)} دقيقة`;
-  if (s < 86400) return `قبل ${Math.floor(s / 3600)} ساعة`;
-  return `قبل ${Math.floor(s / 86400)} يوم`;
+type Device = {
+  id: string;
+  device_name: string;
+  platform?: string;
+  last_seen_at?: string;
+  last_lat?: number | null;
+  last_lng?: number | null;
+  last_location_at?: string | null;
+  child_username?: string;
 };
+type Place = {
+  id: number;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radius_m: number;
+};
+type Edit = {
+  limit: string;
+  start: string;
+  end: string;
+  timezone: string;
+  enabled: boolean;
+};
+type UsageInfo = {
+  total: number;
+  apps: { packageName: string; minutes: number }[];
+  at: string;
+};
+type PairCode = { code: string; expiresAt: number };
 
-const validUsername = (v: string) => /^[a-zA-Z0-9_.-]{3,32}$/.test(v);
+class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+const isAuthError = (e: unknown) =>
+  e instanceof ApiError && (e.status === 401 || e.status === 403);
+
+async function json(response: Response): Promise<any> {
+  const text = await response.text();
+  let data: any;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new ApiError(
+      `استجابة غير صالحة من الخادم (${response.status})`,
+      response.status,
+    );
+  }
+  if (!response.ok) {
+    throw new ApiError(
+      data?.message || data?.error || `HTTP ${response.status}`,
+      response.status,
+    );
+  }
+  return data;
+}
+
+const hhmm = (v?: string) => (v || '21:00').slice(0, 5);
 
 export default function ParentalScreen() {
+  const router = useRouter();
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
   const [familyId, setFamilyId] = useState('');
-  const [familyName, setFamilyName] = useState('');
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [isConfigured, setIsConfigured] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [password, setPassword] = useState('');
+  const [token, setToken] = useState('');
+  const [accountName, setAccountName] = useState('');
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [rules, setRules] = useState<Rule[]>([]);
+  const [edits, setEdits] = useState<Record<string, Edit>>({});
+  const [usage, setUsage] = useState<Record<string, UsageInfo | null>>({});
+  const [pairCode, setPairCode] = useState<PairCode | null>(null);
+  const [places, setPlaces] = useState<Place[]>([]);
+  const [placeName, setPlaceName] = useState('');
+  const [placeLat, setPlaceLat] = useState('');
+  const [placeLng, setPlaceLng] = useState('');
+  const [placeRadius, setPlaceRadius] = useState('150');
+  const [placeBusy, setPlaceBusy] = useState(false);
+  const [commandBusy, setCommandBusy] = useState('');
+  const [codeBusy, setCodeBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState('');
+  const [error, setError] = useState('');
 
-  const [pairingCode, setPairingCode] = useState<string | null>(null);
-  const [secondsLeft, setSecondsLeft] = useState(0);
-  const [isFetchingCode, setIsFetchingCode] = useState(false);
-  const [codeError, setCodeError] = useState('');
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const load = useCallback(async (auth: string) => {
+    const headers = { Authorization: `Bearer ${auth}` };
+    const [d, r, p] = await Promise.all([
+      fetch(`${API}/api/parent/devices`, { headers }).then(json),
+      fetch(`${API}/api/parent/usage-rules`, { headers }).then(json),
+      fetch(`${API}/api/parent/places`, { headers }).then(json),
+    ]);
+    setPlaces(Array.isArray(p.places) ? p.places : []);
+    const nextDevices: Device[] = Array.isArray(d.devices) ? d.devices : [];
+    const nextRules: Rule[] = Array.isArray(r.usageRules) ? r.usageRules : [];
+    setDevices(nextDevices);
+    setRules(nextRules);
+    setEdits(Object.fromEntries(nextRules.map((item) => [
+      item.child_account_id,
+      {
+        limit: String(item.daily_limit_minutes ?? 120),
+        start: hhmm(item.bedtime_start),
+        end: hhmm(item.bedtime_end),
+        timezone: item.timezone || 'Africa/Algiers',
+        enabled: item.enabled !== false,
+      },
+    ])));
 
-  const [devices, setDevices] = useState<Device[] | null>(null);
-  const [devicesError, setDevicesError] = useState('');
-  const [isLoadingDevices, setIsLoadingDevices] = useState(false);
-
-  useEffect(() => {
-    async function loadCredentials() {
-      try {
-        const savedUser = await SecureStore.getItemAsync('username');
-        const savedFamily = await SecureStore.getItemAsync('familyId');
-        const savedToken = await SecureStore.getItemAsync('userToken');
-        if (savedUser && savedFamily && savedToken) {
-          setUsername(savedUser);
-          setFamilyId(savedFamily);
-          setIsConfigured(true);
+    const entries = await Promise.all(
+      nextRules.map(async (item): Promise<[string, UsageInfo | null]> => {
+        try {
+          const res = await fetch(
+            `${API}/api/parent/children/${encodeURIComponent(item.child_account_id)}/activity?limit=30`,
+            { headers },
+          );
+          const a = await json(res);
+          const list: any[] = Array.isArray(a.activities) ? a.activities : [];
+          const hit = list.find((x) => x?.event === 'usage_report');
+          if (!hit) return [item.child_account_id, null];
+          return [item.child_account_id, {
+            total: Number(hit.data?.totalMinutes ?? 0),
+            apps: Array.isArray(hit.data?.apps) ? hit.data.apps.slice(0, 3) : [],
+            at: hit.created_at,
+          }];
+        } catch {
+          return [item.child_account_id, null];
         }
-      } catch (e) {
-        console.log('خطأ قراءة التخزين الآمن:', e);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    loadCredentials();
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+      }),
+    );
+    setUsage(Object.fromEntries(entries));
   }, []);
 
-  const clearSession = async () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    await SecureStore.deleteItemAsync('username');
-    await SecureStore.deleteItemAsync('familyId');
-    await SecureStore.deleteItemAsync('userToken');
-    setPassword('');
-    setPairingCode(null);
-    setSecondsLeft(0);
-    setCodeError('');
-    setDevices(null);
-    setDevicesError('');
-    setIsConfigured(false);
-  };
-
-  const sessionExpired = async () => {
-    await clearSession();
-    Alert.alert('انتهت الجلسة', 'سجّل الدخول من جديد.');
-  };
-
-  const fetchDevices = useCallback(async () => {
-    setDevicesError('');
-    try {
-      setIsLoadingDevices(true);
-      const token = await SecureStore.getItemAsync('userToken');
-      if (!token) {
-        await sessionExpired();
-        return;
-      }
-      const res = await fetch(`${BASE_URL}/api/parent/devices`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 401) {
-        await sessionExpired();
-        return;
-      }
-      const data = await res.json().catch(() => null);
-      if (res.ok && Array.isArray(data?.devices)) {
-        setDevices(data.devices);
-      } else {
-        setDevicesError(data?.error || 'تعذّر تحميل الأجهزة.');
-      }
-    } catch (e) {
-      setDevicesError('تعذّر الاتصال بالخادم. تحقق من الإنترنت.');
-    } finally {
-      setIsLoadingDevices(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const clearSession = useCallback(() => {
+    setToken('');
+    setAccountName('');
+    setDevices([]);
+    setRules([]);
+    setEdits({});
+    setUsage({});
+    setPairCode(null);
+    setPlaces([]);
   }, []);
 
-  useEffect(() => {
-    if (isConfigured) fetchDevices();
-  }, [isConfigured, fetchDevices]);
-
-  const startCountdown = (seconds: number) => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    setSecondsLeft(seconds);
-    timerRef.current = setInterval(() => {
-      setSecondsLeft(prev => {
-        if (prev <= 1) {
-          if (timerRef.current) clearInterval(timerRef.current);
-          setPairingCode(null);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  };
-
-  const generatePairingCode = async () => {
-    setCodeError('');
+  const addPlace = async () => {
+    if (!token) return;
+    const lat = Number(placeLat);
+    const lng = Number(placeLng);
+    const radius = Number(placeRadius);
+    if (!placeName.trim()) {
+      Alert.alert('اسم مطلوب', 'أدخل اسم المنطقة (مثل: البيت أو المدرسة).');
+      return;
+    }
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180) {
+      Alert.alert('إحداثيات غير صالحة', 'تحقق من خط العرض وخط الطول.');
+      return;
+    }
+    if (!Number.isInteger(radius) || radius < 30 || radius > 5000) {
+      Alert.alert('نصف قطر غير صالح', 'أدخل رقمًا بين 30 و5000 مترًا.');
+      return;
+    }
+    setPlaceBusy(true);
+    setError('');
     try {
-      setIsFetchingCode(true);
-      const token = await SecureStore.getItemAsync('userToken');
-      if (!token) {
-        await sessionExpired();
-        return;
-      }
-      const res = await fetch(`${BASE_URL}/api/pairing/code`, {
+      const response = await fetch(`${API}/api/parent/places`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: placeName.trim(), latitude: lat, longitude: lng, radiusM: radius }),
       });
-      const data = await res.json().catch(() => null);
-      if (res.ok && data?.code) {
-        setPairingCode(String(data.code));
-        startCountdown(Number(data.expiresInSeconds) || 600);
-      } else if (res.status === 429) {
-        setCodeError('تجاوزت الحد المسموح (10 طلبات كل 15 دقيقة). انتظر قليلاً ثم أعد المحاولة.');
-      } else if (res.status === 401) {
-        await sessionExpired();
-      } else {
-        setCodeError(data?.error || data?.message || 'تعذّر توليد الرمز.');
-      }
+      await json(response);
+      setPlaceName('');
+      setPlaceLat('');
+      setPlaceLng('');
+      setPlaceRadius('150');
+      await load(token);
     } catch (e) {
-      setCodeError('تعذّر الاتصال بالخادم. تحقق من الإنترنت وأعد المحاولة.');
+      if (isAuthError(e)) await expire();
+      else setError(e instanceof Error ? e.message : 'تعذر إضافة المنطقة.');
     } finally {
-      setIsFetchingCode(false);
+      setPlaceBusy(false);
     }
   };
 
-  const saveSession = async (token: string, user: string, fam: string) => {
-    await SecureStore.setItemAsync('userToken', token);
-    await SecureStore.setItemAsync('username', user);
-    await SecureStore.setItemAsync('familyId', fam);
-  };
-
-  const handleRegister = async () => {
-    if (!familyName.trim() || !username.trim() || !password) {
-      Alert.alert('تنبيه', 'يرجى ملء كافة الخانات المطلوبة');
-      return;
-    }
-    if (!validUsername(username.trim())) {
-      Alert.alert('اسم المستخدم غير صالح', 'من 3 إلى 32 حرفاً: حروف إنجليزية وأرقام و _ . - فقط.');
-      return;
-    }
-    if (password.length < 10) {
-      Alert.alert('كلمة المرور قصيرة', 'يجب أن تكون 10 أحرف على الأقل.');
-      return;
-    }
+  const sendCommand = async (childAccountId: string, command: 'lock' | 'unlock' | 'add_minutes', minutes?: number) => {
+    if (!token) return;
+    setCommandBusy(childAccountId + command);
+    setError('');
     try {
-      setIsLoading(true);
-      const response = await fetch(`${BASE_URL}/api/auth/register`, {
+      const response = await fetch(`${API}/api/parent/children/${encodeURIComponent(childAccountId)}/command`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          familyName: familyName.trim(),
-          username: username.trim(),
-          password: password,
-        }),
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command, minutes }),
       });
-      const data = await response.json().catch(() => null);
-      const newFamilyId = data?.account?.familyId;
-      if (response.ok && newFamilyId && data?.token) {
-        await saveSession(data.token, username.trim(), String(newFamilyId));
-        setFamilyId(String(newFamilyId));
-        setPassword('');
-        setIsRegistering(false);
-        setIsConfigured(true);
-        Alert.alert('تم إنشاء العائلة بنجاح 🎉', `رقم عائلتك الموحد هو: ${newFamilyId}\nاحفظه، ستحتاجه لتسجيل الدخول.`);
-      } else if (response.status === 429) {
-        Alert.alert('تنبيه', 'تجاوزت حد التسجيل، حاول لاحقاً.');
-      } else {
-        Alert.alert('تنبيه التسجيل', data?.error || data?.message || 'تعذر إنشاء الحساب');
-      }
-    } catch (err) {
-      Alert.alert('خطأ', 'تعذر الوصول إلى الخادم');
+      await json(response);
+      Alert.alert(
+        'تم الإرسال',
+        'سيصل الأمر إلى هاتف الطفل خلال دقيقة تقريبًا عند توفر الاتصال.',
+      );
+    } catch (e) {
+      if (isAuthError(e)) await expire();
+      else setError(e instanceof Error ? e.message : 'تعذر إرسال الأمر.');
     } finally {
-      setIsLoading(false);
+      setCommandBusy('');
     }
   };
 
-  const handleLogin = async () => {
+  const removePlace = async (place: Place) => {
+    if (!token) return;
+    try {
+      const response = await fetch(`${API}/api/parent/places/${place.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      await json(response);
+      await load(token);
+    } catch (e) {
+      if (isAuthError(e)) await expire();
+      else setError(e instanceof Error ? e.message : 'تعذر حذف المنطقة.');
+    }
+  };
+
+  // جلسة منتهية: احذف التوكن المحفوظ وارجع لشاشة الدخول
+  const expire = useCallback(async () => {
+    try {
+      await SecureStore.deleteItemAsync(TOKEN_KEY);
+    } catch {
+      // تجاهل
+    }
+    clearSession();
+    setError('انتهت الجلسة، سجّل الدخول من جديد.');
+  }, [clearSession]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const saved = await SecureStore.getItemAsync(TOKEN_KEY);
+        if (saved) {
+          await load(saved);
+          if (active) setToken(saved);
+        }
+      } catch (e) {
+        if (!active) return;
+        if (isAuthError(e)) {
+          await expire();
+        } else {
+          setError(e instanceof Error ? e.message : 'تعذر الاتصال بالخادم.');
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [load, expire]);
+
+  const login = async () => {
     if (!familyId.trim() || !username.trim() || !password) {
-      Alert.alert('بيانات ناقصة', 'أدخل رقم العائلة واسم المستخدم وكلمة المرور.');
+      Alert.alert(
+        'بيانات ناقصة',
+        'أدخل معرّف العائلة واسم المستخدم وكلمة المرور.'
+      );
       return;
     }
+
+    setBusy(true);
+    setError('');
+
     try {
-      setIsLoading(true);
-      const response = await fetch(`${BASE_URL}/api/auth/login`, {
+      const response = await fetch(`${API}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           familyId: familyId.trim(),
           username: username.trim(),
-          password: password,
+          password,
         }),
       });
-      const data = await response.json().catch(() => null);
-      if (response.ok && data?.token) {
-        if (data?.account?.role && data.account.role !== 'parent') {
-          Alert.alert('حساب غير صالح', 'هذه الشاشة لحسابات أولياء الأمور فقط.');
-          return;
-        }
-        await saveSession(data.token, username.trim(), familyId.trim());
-        setPassword('');
-        setIsConfigured(true);
-      } else if (response.status === 429) {
-        Alert.alert('محاولات كثيرة', 'انتظر قليلاً (حتى 15 دقيقة) ثم أعد المحاولة.');
-      } else {
-        Alert.alert('خطأ في الدخول', data?.error || data?.message || 'البيانات غير مطابقة');
+
+      const data = await json(response);
+
+      if (!data.token) {
+        throw new Error('لم يُرجع الخادم رمز الدخول.');
+      }
+
+      if (data.account?.role && data.account.role !== 'parent') {
+        throw new Error('هذا الحساب ليس حساب وليّ أمر.');
+      }
+
+      await SecureStore.setItemAsync(TOKEN_KEY, data.token);
+      setAccountName(data.account?.username || username.trim());
+      setToken(data.token);
+      setPassword('');
+
+      try {
+        await load(data.token);
+      } catch (e) {
+        setError(
+          'تم تسجيل الدخول، لكن تعذر تحميل الأجهزة والقواعد: ' +
+          (e instanceof Error ? e.message : 'خطأ غير معروف')
+        );
       }
     } catch (e) {
-      Alert.alert('خطأ شبكي', 'تعذّر الاتصال بالسيرفر');
+      setError(e instanceof Error ? e.message : 'فشل تسجيل الدخول.');
     } finally {
-      setIsLoading(false);
+      setBusy(false);
     }
   };
 
-  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const refresh = async () => {
+    if (!token) return;
+    setRefreshing(true);
+    setError('');
+    try {
+      await load(token);
+    } catch (e) {
+      if (isAuthError(e)) await expire();
+      else setError(e instanceof Error ? e.message : 'تعذر التحديث.');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
-  if (isLoading) {
-    return (
-      <SafeAreaView style={[styles.safeArea, styles.center]}>
-        <ActivityIndicator size="large" color={C.primary} />
-      </SafeAreaView>
-    );
-  }
+  const makeCode = async () => {
+    if (!token) return;
+    setCodeBusy(true);
+    setError('');
+    try {
+      const response = await fetch(`${API}/api/pairing/code`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await json(response);
+      setPairCode({
+        code: String(data.code),
+        expiresAt: Date.now() + Number(data.expiresInSeconds || 600) * 1000,
+      });
+    } catch (e) {
+      if (isAuthError(e)) await expire();
+      else setError(e instanceof Error ? e.message : 'تعذر إنشاء الرمز.');
+    } finally {
+      setCodeBusy(false);
+    }
+  };
 
-  if (!isConfigured) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-          <View style={styles.formContainer}>
-            <Text style={styles.title}>
-              {isRegistering ? 'إنشاء حساب عائلة جديد 👨‍👩‍👦' : 'تسجيل دخول ولي الأمر 🔒'}
-            </Text>
-            {isRegistering && (
-              <>
-                <Text style={styles.label}>اسم أو لقب العائلة:</Text>
-                <TextInput style={styles.input} placeholder="مثال: عائلة رباح" placeholderTextColor={C.muted} value={familyName} onChangeText={setFamilyName} />
-              </>
-            )}
-            {!isRegistering && (
-              <>
-                <Text style={styles.label}>رقم العائلة الموحد (Family ID):</Text>
-                <TextInput style={styles.input} placeholder="أدخل رقم العائلة" placeholderTextColor={C.muted} value={familyId} onChangeText={setFamilyId} keyboardType="numeric" />
-              </>
-            )}
-            <Text style={styles.label}>اسم المستخدم لولي الأمر:</Text>
-            <TextInput style={styles.input} placeholder="حروف إنجليزية وأرقام (3-32)" placeholderTextColor={C.muted} value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} />
-            <Text style={styles.label}>كلمة المرور السرية:</Text>
-            <TextInput style={styles.input} placeholder={isRegistering ? '10 أحرف على الأقل' : 'أدخل كلمة السر'} placeholderTextColor={C.muted} value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} />
+  const change = (id: string, patch: Partial<Edit>) => {
+    setEdits((old) => ({ ...old, [id]: { ...old[id], ...patch } }));
+  };
 
-            <Pressable style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.8 }]} onPress={isRegistering ? handleRegister : handleLogin}>
-              <Text style={styles.primaryBtnText}>
-                {isRegistering ? 'إتمام التسجيل وتوليد رقم العائلة' : 'دخول إلى لوحة التحكم الأبوية'}
-              </Text>
-            </Pressable>
+  const save = async (rule: Rule) => {
+    const edit = edits[rule.child_account_id];
+    if (!token || !edit) return;
 
-            <Text style={styles.switchText} onPress={() => setIsRegistering(!isRegistering)}>
-              {isRegistering ? 'تملك حساب عائلة بالفعل؟ سجل دخولك الآن' : 'لا تملك رقم عائلة؟ أنشئ حساباً جديداً للأسرة'}
-            </Text>
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
+    const limit = Number(edit.limit);
+    const validTime = (v: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1440) {
+      Alert.alert('حد غير صالح', 'أدخل عدد دقائق من 1 إلى 1440.');
+      return;
+    }
+    if (!validTime(edit.start) || !validTime(edit.end)) {
+      Alert.alert('وقت غير صالح', 'استخدم صيغة 24 ساعة، مثل 21:00 و07:00.');
+      return;
+    }
+
+    setSaving(rule.child_account_id);
+    setError('');
+    try {
+      const response = await fetch(
+        `${API}/api/parent/usage-rules/${encodeURIComponent(rule.child_account_id)}`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            dailyLimitMinutes: limit,
+            bedtimeStart: edit.start,
+            bedtimeEnd: edit.end,
+            timezone: edit.timezone.trim() || 'Africa/Algiers',
+            enabled: edit.enabled,
+          }),
+        },
+      );
+      await json(response);
+      await load(token);
+      Alert.alert('تم الحفظ', `تم حفظ قواعد ${rule.child_username}.`);
+    } catch (e) {
+      if (isAuthError(e)) {
+        await expire();
+      } else {
+        setError(e instanceof Error ? e.message : 'تعذر حفظ القواعد.');
+      }
+    } finally {
+      setSaving('');
+    }
+  };
+
+  const logout = async () => {
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    clearSession();
+    setError('');
+  };
+
+  const field = (label: string, value: string, onChangeText: (v: string) => void,
+    keyboardType?: 'default' | 'number-pad') => (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        style={styles.input}
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType={keyboardType || 'default'}
+        placeholderTextColor="#94a3b8"
+        autoCapitalize="none"
+      />
+    </View>
+  );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView
-        contentContainerStyle={styles.dashContainer}
-        refreshControl={<RefreshControl refreshing={isLoadingDevices} onRefresh={fetchDevices} tintColor={C.link} />}
-      >
-        <Text style={styles.dashTitle}>لوحة التحكم الأبوية 👨‍💼</Text>
+    <SafeAreaView style={styles.safe}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Text style={styles.link}>رجوع</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>الرقابة الأبوية</Text>
+        {token
+          ? <TouchableOpacity onPress={logout}><Text style={styles.logout}>خروج</Text></TouchableOpacity>
+          : <View style={{ width: 35 }} />}
+      </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardText}>مرحباً بك يا <Text style={{ color: C.link, fontWeight: 'bold' }}>{username}</Text></Text>
-          <Text style={styles.cardText}>رقم العائلة الموحد: <Text style={{ color: C.success, fontWeight: 'bold' }}>{familyId}</Text></Text>
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#60a5fa" />
+          <Text style={styles.muted}>جارٍ تحميل البيانات…</Text>
         </View>
+      ) : !token ? (
+        <ScrollView contentContainerStyle={styles.login}>
+          <Text style={styles.emoji}>👨‍👩‍👧</Text>
+          <Text style={styles.title}>دخول وليّ الأمر</Text>
+          {field('رقم العائلة (familyId)', familyId, setFamilyId)}
+          {field('اسم المستخدم', username, setUsername)}
+          <Text style={styles.label}>كلمة المرور</Text>
+          <TextInput
+            style={styles.input}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            placeholder="كلمة المرور"
+            placeholderTextColor="#94a3b8"
+            autoCapitalize="none"
+          />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <TouchableOpacity style={styles.button} onPress={login} disabled={busy}>
+            {busy ? <ActivityIndicator color="#fff" /> :
+              <Text style={styles.buttonText}>تسجيل الدخول</Text>}
+          </TouchableOpacity>
+          <Text style={styles.muted}>يُحفظ رمز الدخول في التخزين الآمن للجهاز.</Text>
+        </ScrollView>
+      ) : (
+        <ScrollView contentContainerStyle={styles.content}>
+          <Text style={styles.title}>مرحبًا {accountName || 'بوليّ الأمر'}</Text>
+          {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>🔑 رمز ربط جهاز الطفل</Text>
-          <Text style={styles.cardSubText}>ولّد رمزاً واكتبه في هاتف الطفل. الرمز صالح 10 دقائق ويُستخدم مرة واحدة.</Text>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>🔗 ربط جهاز طفل جديد</Text>
+            <Text style={styles.muted}>
+              أنشئ رمزًا، ثم أدخله في «ربط جهاز الطفل» على هاتف الطفل. الرمز يعمل مرة واحدة فقط ولمدة 10 دقائق.
+            </Text>
+            {pairCode ? (
+              <>
+                <Text style={styles.code} selectable>{pairCode.code}</Text>
+                <Text style={styles.muted}>
+                  صالح حتى {new Date(pairCode.expiresAt).toLocaleTimeString()}
+                </Text>
+              </>
+            ) : null}
+            <TouchableOpacity style={styles.button} onPress={makeCode} disabled={codeBusy}>
+              {codeBusy
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={styles.buttonText}>إنشاء رمز ربط</Text>}
+            </TouchableOpacity>
+          </View>
 
-          {isFetchingCode ? (
-            <ActivityIndicator size="small" color={C.link} style={{ marginVertical: 18 }} />
-          ) : pairingCode ? (
-            <>
-              <Text style={styles.roomCode} selectable>{pairingCode}</Text>
-              <Text style={styles.timerText}>ينتهي خلال {fmt(secondsLeft)}</Text>
-            </>
-          ) : null}
+          <TouchableOpacity style={styles.secondary} onPress={refresh} disabled={refreshing}>
+            {refreshing
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={styles.buttonText}>تحديث البيانات</Text>}
+          </TouchableOpacity>
 
-          {!!codeError && <Text style={styles.errorText}>{codeError}</Text>}
+          <Text style={styles.heading}>الأجهزة ({devices.length})</Text>
+          {devices.length === 0
+            ? <Text style={styles.muted}>لا توجد أجهزة مرتبطة حاليًا.</Text>
+            : devices.map((d) => (
+              <View key={d.id} style={styles.card}>
+                <Text style={styles.cardTitle}>📱 {d.device_name}</Text>
+                <Text style={styles.muted}>الطفل: {d.child_username || 'غير محدد'}</Text>
+                <Text style={styles.muted}>النظام: {d.platform || 'غير معروف'}</Text>
+                <Text style={styles.muted}>
+                  آخر اتصال: {d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : 'غير متوفر'}
+                </Text>
+                {d.last_lat != null && d.last_lng != null ? (
+                  <>
+                    <Text style={styles.muted}>
+                      آخر موقع: {d.last_lat.toFixed(5)}, {d.last_lng.toFixed(5)}
+                      {d.last_location_at ? ' — ' + new Date(d.last_location_at).toLocaleString() : ''}
+                    </Text>
+                    <TouchableOpacity onPress={() => Linking.openURL(`https://maps.google.com/?q=${d.last_lat},${d.last_lng}`)}>
+                      <Text style={styles.link}>فتح في خرائط Google</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <Text style={styles.muted}>لا يوجد موقع مسجل بعد.</Text>
+                )}
+              </View>
+            ))}
 
-          <Pressable
-            style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.8 }, isFetchingCode && { opacity: 0.5 }]}
-            onPress={generatePairingCode}
-            disabled={isFetchingCode}
-          >
-            <Text style={styles.primaryBtnText}>{pairingCode ? 'توليد رمز جديد' : 'توليد رمز الربط'}</Text>
-          </Pressable>
-        </View>
+          {places.map((p) => (
+            <View key={p.id} style={styles.card}>
+              <Text style={styles.cardTitle}>📍 {p.name}</Text>
+              <Text style={styles.muted}>{p.latitude.toFixed(5)}, {p.longitude.toFixed(5)} — نصف قطر {p.radius_m} م</Text>
+              <TouchableOpacity onPress={() => removePlace(p)}>
+                <Text style={styles.logout}>حذف المنطقة</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
 
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>📡 الأجهزة المربوطة</Text>
-
-          {isLoadingDevices && devices === null ? (
-            <ActivityIndicator size="small" color={C.link} style={{ marginVertical: 14 }} />
-          ) : devicesError ? (
-            <>
-              <Text style={styles.errorText}>{devicesError}</Text>
-              <Pressable style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.8 }]} onPress={fetchDevices}>
-                <Text style={styles.secondaryBtnText}>إعادة المحاولة</Text>
-              </Pressable>
-            </>
-          ) : devices && devices.length === 0 ? (
-            <Text style={styles.cardSubText}>لا توجد أجهزة مربوطة بعد.</Text>
-          ) : (
-            devices?.map(d => {
-              const hasLocation = d.last_lat !== null && d.last_lng !== null;
+          <Text style={styles.heading}>قواعد الاستخدام</Text>
+          {rules.length === 0
+            ? <Text style={styles.muted}>لا توجد قواعد استخدام مسجلة.</Text>
+            : rules.map((rule) => {
+              const e = edits[rule.child_account_id];
+              if (!e) return null;
+              const u = usage[rule.child_account_id];
               return (
-                <View key={String(d.id)} style={styles.deviceRow}>
-                  <Text style={styles.deviceName}>{d.device_name}</Text>
-                  <Text style={styles.cardSubText}>الطفل: {d.child_username} • {d.platform}</Text>
-                  <Text style={styles.cardSubText}>آخر ظهور: {ago(d.last_seen_at)}</Text>
-                  {hasLocation ? (
-                    <Pressable
-                      style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.8 }]}
-                      onPress={() => Linking.openURL(`https://www.google.com/maps?q=${d.last_lat},${d.last_lng}`)}
+                <View key={rule.child_account_id} style={styles.card}>
+                  <Text style={styles.cardTitle}> 👦 {rule.child_username}</Text>
+                  <View style={styles.usageBox}>
+                    {u ? (
+                      <>
+                        <Text style={styles.usageMain}>
+                          آخر استخدام: {u.total} دقيقة اليوم
+                        </Text>
+                        {u.apps.map((a) => (
+                          <Text key={a.packageName} style={styles.muted}>
+                            {a.packageName}: {a.minutes} د
+                          </Text>
+                        ))}
+                        <Text style={styles.muted}>
+                          وصل في {new Date(u.at).toLocaleString()}
+                        </Text>
+                      </>
+                    ) : (
+                      <Text style={styles.muted}>
+                        لم يصل أي تقرير استخدام بعد (يتطلب إذن الوصول إلى بيانات الاستخدام على هاتف الطفل).
+                      </Text>
+                    )}
+                  </View>
+                  <View style={styles.commandRow}>
+                    <TouchableOpacity
+                      style={styles.commandBtn}
+                      onPress={() => sendCommand(rule.child_account_id, 'lock')}
+                      disabled={commandBusy === rule.child_account_id + 'lock'}
                     >
-                      <Text style={styles.secondaryBtnText}>📍 آخر موقع ({ago(d.last_location_at)})</Text>
-                    </Pressable>
-                  ) : (
-                    <Text style={styles.cardSubText}>لا يوجد موقع مسجّل بعد.</Text>
-                  )}
+                      {commandBusy === rule.child_account_id + 'lock'
+                        ? <ActivityIndicator color="#fff" />
+                        : <Text style={styles.buttonText}>🔒 قفل الآن</Text>}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.commandBtn, styles.commandBtnAlt]}
+                      onPress={() => sendCommand(rule.child_account_id, 'unlock')}
+                      disabled={commandBusy === rule.child_account_id + 'unlock'}
+                    >
+                      {commandBusy === rule.child_account_id + 'unlock'
+                        ? <ActivityIndicator color="#fff" />
+                        : <Text style={styles.buttonText}>🔓 فتح القفل</Text>}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.commandBtn, styles.commandBtnAlt]}
+                      onPress={() => sendCommand(rule.child_account_id, 'add_minutes', 30)}
+                      disabled={commandBusy === rule.child_account_id + 'add_minutes'}
+                    >
+                      {commandBusy === rule.child_account_id + 'add_minutes'
+                        ? <ActivityIndicator color="#fff" />
+                        : <Text style={styles.buttonText}>+30 دقيقة</Text>}
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.switchRow}>
+                    <Text style={styles.label}>تفعيل القواعد</Text>
+                    <Switch value={e.enabled}
+                      onValueChange={(v) => change(rule.child_account_id, { enabled: v })} />
+                  </View>
+                  {field('الحد اليومي بالدقائق', e.limit,
+                    (v) => change(rule.child_account_id, { limit: v.replace(/[^0-9]/g, '') }), 'number-pad')}
+                  {field('بداية النوم (HH:MM)', e.start,
+                    (v) => change(rule.child_account_id, { start: v }))}
+                  {field('نهاية النوم (HH:MM)', e.end,
+                    (v) => change(rule.child_account_id, { end: v }))}
+                  {field('المنطقة الزمنية', e.timezone,
+                    (v) => change(rule.child_account_id, { timezone: v }))}
+                  <TouchableOpacity style={styles.button}
+                    onPress={() => save(rule)} disabled={saving === rule.child_account_id}>
+                    {saving === rule.child_account_id
+                      ? <ActivityIndicator color="#fff" />
+                      : <Text style={styles.buttonText}>حفظ القواعد</Text>}
+                  </TouchableOpacity>
                 </View>
               );
-            })
-          )}
-        </View>
-
-        <Pressable style={({ pressed }) => [styles.dangerBtn, pressed && { opacity: 0.8 }]} onPress={clearSession}>
-          <Text style={styles.primaryBtnText}>⚙️ تسجيل الخروج وتعديل الحساب</Text>
-        </Pressable>
-      </ScrollView>
+            })}
+          <Text style={styles.warning}>
+            تنبيه: يصل القاعدة الجديدة إلى هاتف الطفل خلال 5 دقائق تقريبًا عند توفر الاتصال، ويقفل التطبيق عند تجاوز الحد أو في وقت النوم. الحد اليومي يحسب استخدام الهاتف كله.
+          </Text>
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: C.bg },
-  container: { flexGrow: 1, backgroundColor: C.bg, justifyContent: 'center', padding: 20 },
-  dashContainer: { flexGrow: 1, backgroundColor: C.bg, padding: 20, paddingBottom: 30 },
-  center: { alignItems: 'center', justifyContent: 'center' },
-  formContainer: { backgroundColor: C.card, padding: 25, borderRadius: 24, borderWidth: 1, borderColor: C.border },
-  title: { fontSize: 22, color: C.text, textAlign: 'center', marginBottom: 25, fontWeight: 'bold' },
-  label: { color: C.label, fontSize: 14, marginBottom: 6, fontWeight: '600', textAlign: 'right' },
-  input: { backgroundColor: C.input, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16, marginBottom: 16, fontSize: 16, color: C.text, borderWidth: 1, borderColor: C.border, textAlign: 'right' },
-  primaryBtn: { backgroundColor: C.primary, paddingVertical: 15, borderRadius: 16, alignItems: 'center', marginTop: 10 },
-  primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  secondaryBtn: { borderWidth: 1, borderColor: C.primary, paddingVertical: 10, borderRadius: 12, alignItems: 'center', marginTop: 10 },
-  secondaryBtnText: { color: C.link, fontSize: 14, fontWeight: '600' },
-  dangerBtn: { backgroundColor: C.danger, paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 20 },
-  switchText: { color: C.link, textAlign: 'center', marginTop: 20, textDecorationLine: 'underline', fontSize: 14, fontWeight: '500' },
-  dashTitle: { fontSize: 24, color: C.text, textAlign: 'center', fontWeight: 'bold', marginBottom: 20 },
-  card: { backgroundColor: C.card, padding: 20, borderRadius: 20, borderWidth: 1, borderColor: C.border, marginBottom: 16 },
-  cardText: { color: C.text, fontSize: 16, textAlign: 'right', marginBottom: 6 },
-  cardLabel: { color: C.label, fontSize: 17, fontWeight: '700', textAlign: 'right', marginBottom: 8 },
-  cardSubText: { color: C.muted, fontSize: 13, textAlign: 'right', marginBottom: 6 },
-  deviceRow: { borderTopWidth: 1, borderColor: C.border, paddingTop: 12, marginTop: 8 },
-  deviceName: { color: C.text, fontSize: 16, fontWeight: '700', textAlign: 'right', marginBottom: 4 },
-  roomCode: { color: C.success, fontSize: 36, fontWeight: 'bold', letterSpacing: 6, textAlign: 'center', marginVertical: 14 },
-  timerText: { color: C.muted, fontSize: 13, textAlign: 'center', marginBottom: 6 },
-  errorText: { color: C.danger, fontSize: 13, textAlign: 'right', marginTop: 8 },
+  safe: { flex: 1, backgroundColor: '#0b1220' },
+  header: { minHeight: 56, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#ffffff18' },
+  headerTitle: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  link: { color: '#93c5fd', fontWeight: '700', paddingVertical: 10 },
+  logout: { color: '#fca5a5', fontWeight: '700', paddingVertical: 10 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  login: { flexGrow: 1, justifyContent: 'center', padding: 24 },
+  content: { padding: 18, paddingBottom: 40 },
+  emoji: { fontSize: 48, textAlign: 'center', marginBottom: 12 },
+  title: { color: '#fff', fontSize: 23, fontWeight: '800', textAlign: 'center', marginVertical: 16 },
+  heading: { color: '#e2e8f0', fontSize: 18, fontWeight: '800', marginTop: 22, marginBottom: 10 },
+  label: { color: '#cbd5e1', fontWeight: '700', fontSize: 13 },
+  field: { marginTop: 10 },
+  input: { color: '#fff', backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#334155', borderRadius: 11, padding: 12, marginTop: 6 },
+  button: { minHeight: 48, backgroundColor: '#2563eb', borderRadius: 12, alignItems: 'center', justifyContent: 'center', padding: 12, marginTop: 12 },
+  secondary: { minHeight: 44, backgroundColor: '#334155', borderRadius: 12, alignItems: 'center', justifyContent: 'center', padding: 10 },
+  buttonText: { color: '#fff', fontWeight: '800' },
+  muted: { color: '#94a3b8', fontSize: 13, lineHeight: 20, marginTop: 5 },
+  error: { color: '#fca5a5', backgroundColor: '#7f1d1d33', borderRadius: 10, padding: 10, marginVertical: 10 },
+  card: { backgroundColor: '#111c30', borderWidth: 1, borderColor: '#334155', borderRadius: 14, padding: 14, marginBottom: 12 },
+  cardTitle: { color: '#fff', fontWeight: '800', fontSize: 15, marginBottom: 8 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
+  commandRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  commandBtn: { flex: 1, minHeight: 42, backgroundColor: '#dc2626', borderRadius: 10, alignItems: 'center', justifyContent: 'center', padding: 8 },
+  commandBtnAlt: { backgroundColor: '#334155' },
+  code: { color: '#60a5fa', fontSize: 36, fontWeight: '800', letterSpacing: 6, textAlign: 'center', marginTop: 14 },
+  usageBox: { backgroundColor: '#0f172a', borderRadius: 10, padding: 10, marginBottom: 4 },
+  usageMain: { color: '#e2e8f0', fontWeight: '700', fontSize: 14 },
+  warning: { color: '#fbbf24', fontSize: 12, lineHeight: 19, marginTop: 18, padding: 12, backgroundColor: '#78350f33', borderRadius: 10 },
 });
