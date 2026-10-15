@@ -46,7 +46,8 @@
         "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
       ],
       "package": "com.rabahdj.app",
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": true,
+      "allowBackup": false
     },
     "web": {
       "output": "static",
