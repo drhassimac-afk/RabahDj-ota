@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, TextInput, Text, ScrollView, ActivityIndicator, Alert, Pressable } from 'react-native';
+import { StyleSheet, View, TextInput, Button, Text, ScrollView, ActivityIndicator, Alert, Pressable } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BASE_URL } from '../lib/config';
@@ -10,6 +10,8 @@ const C = {
   primary: '#2563eb', link: '#60a5fa', text: '#ffffff', label: '#e2e8f0',
   muted: '#64748b', danger: '#ef4444', success: '#10b981',
 };
+
+const esc = (s: string) => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 
 export default function ParentalScreen() {
   const [username, setUsername] = useState('');
@@ -22,6 +24,7 @@ export default function ParentalScreen() {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isMicActive, setIsMicActive] = useState(false);
   const [isConnectingStream, setIsConnectingStream] = useState(false);
+  
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -33,27 +36,29 @@ export default function ParentalScreen() {
         if (savedUser && savedFamily && savedToken) {
           setUsername(savedUser); setFamilyId(savedFamily); setIsConfigured(true);
         }
-      } catch (e) { console.log(e); } finally { setIsLoading(false); }
+      } catch (e) { console.log('خطأ قراءة التخزين الآمن:', e); } finally { setIsLoading(false); }
     }
     loadCredentials();
   }, []);
 
   const handleRegister = async () => {
     if (!familyName.trim() || !username.trim() || !password) {
-      Alert.alert('تنبيه', 'يرجى ملء كافة الخانات المطلوب لإنشاء العائلة'); return;
+      Alert.alert('تنبيه', 'يرجى ملء كافة الخانات المطلوبة لإنشاء الحساب الأبوي'); return;
     }
     try {
       setIsLoading(true);
-      const res = await fetch(`${BASE_URL}/api/auth/register`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ family_name: familyName.trim(), username: username.trim(), password }),
+      const response = await fetch(`${BASE_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // 🟢 إرسال الحقل بصيغة familyName الصحيحة للسيرفر لمنع مشكلة الاسم المستعمل سابقاً
+        body: JSON.stringify({ familyName: familyName.trim(), username: username.trim(), password }),
       });
-      const data = await res.json().catch(() => null);
-      if (res.ok && data?.account?.familyId) {
-        Alert.alert('تم إنشاء العائلة بنجاح 🎉', `رقم عائلتك هو: ${data.account.familyId}`);
+      const data = await response.json().catch(() => null);
+      if (response.ok && data?.account?.familyId) {
+        Alert.alert('تم إنشاء العائلة بنجاح 🎉', `رقم عائلتك الموحد السحابي: ${data.account.familyId}`);
         setFamilyId(data.account.familyId.toString()); setIsRegistering(false);
-      } else { Alert.alert('تنبيه التسجيل', data?.error || data?.message || 'اسم المستخدم مستعمل سابقاً.'); }
-    } catch (err) { Alert.alert('خطأ', 'تعذر الاتصال بالسيرفر السحابي.'); } finally { setIsLoading(false); }
+      } else { Alert.alert('تنبيه التسجيل', data?.error || data?.message || 'البيانات المرسلة غير متوافقة'); }
+    } catch (err) { Alert.alert('خطأ', 'تعذر الوصول إلى الخادم لإنشاء العائلة'); } finally { setIsLoading(false); }
   };
   const handleLogin = async () => {
     if (!familyId.trim() || !username.trim() || !password) {
@@ -61,12 +66,12 @@ export default function ParentalScreen() {
     }
     try {
       setIsLoading(true);
-      const res = await fetch(`${BASE_URL}/api/auth/login`, {
+      const response = await fetch(`${BASE_URL}/api/auth/login`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ familyId: familyId.trim(), username: username.trim(), password }),
       });
-      const data = await res.json().catch(() => null);
-      if (res.ok && data?.token) {
+      const data = await response.json().catch(() => null);
+      if (response.ok && data?.token) {
         await SecureStore.setItemAsync('userToken', data.token);
         await SecureStore.setItemAsync('username', username.trim());
         await SecureStore.setItemAsync('familyId', familyId.trim());
@@ -80,7 +85,7 @@ export default function ParentalScreen() {
       setIsConnectingStream(true);
       if (!isCameraActive) { await startRemoteStream(familyId + '_cam'); setIsCameraActive(true); }
       else { await stopRemoteStream(); setIsCameraActive(false); }
-    } catch (e) { Alert.alert('خطأ', 'فشل معالج البث.'); } finally { setIsConnectingStream(false); }
+    } catch (e) { Alert.alert('خطأ', 'فشل معالج البث المباشر.'); } finally { setIsConnectingStream(false); }
   };
 
   const toggleMicStream = async () => {
@@ -94,14 +99,14 @@ export default function ParentalScreen() {
     await SecureStore.deleteItemAsync('username');
     await SecureStore.deleteItemAsync('familyId');
     await SecureStore.deleteItemAsync('userToken');
-    setIsConfigured(false);
+    setPassword(''); setIsConfigured(false);
   };
 
   if (isLoading) {
     return (
-      <View style={[styles.safeArea, styles.center]}>
+      <SafeAreaView style={[styles.safeArea, styles.center]}>
         <ActivityIndicator size="large" color={C.primary} />
-      </View>
+      </SafeAreaView>
     );
   }
 
@@ -126,9 +131,11 @@ export default function ParentalScreen() {
             <TextInput style={styles.input} placeholder="اختر اسم مستخدم" placeholderTextColor={C.muted} value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} />
             <Text style={styles.label}>كلمة المرور السرية:</Text>
             <TextInput style={styles.input} placeholder="أدخل كلمة السر" placeholderTextColor={C.muted} value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} />
-            <Pressable style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.8 }]} onPress={isRegistering ? handleRegister : handleLogin}>
-              <Text style={styles.primaryBtnText}>{isRegistering ? 'إتمام التسجيل وتوليد رقم العائلة 🚀' : 'دخول إلى لوحة التحكم الأبوية 🔒'}</Text>
-            </Pressable>
+            <View style={styles.buttonSpacing}>
+              <Pressable style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.8 }]} onPress={isRegistering ? handleRegister : handleLogin}>
+                <Text style={styles.primaryBtnText}>{isRegistering ? 'إتمام التسجيل وتوليد رقم العائلة 🚀' : 'دخول إلى لوحة التحكم الأبوية 🔒'}</Text>
+              </Pressable>
+            </View>
             <Text style={styles.switchText} onPress={() => setIsRegistering(!isRegistering)}>
               {isRegistering ? 'تملك حساب عائلة بالفعل؟ سجل دخولك الآن' : 'لا تملك رقم عائلة؟ أنشئ حساباً جديداً للأسرة'}
             </Text>
@@ -181,7 +188,7 @@ const styles = StyleSheet.create({
   dashTitle: { fontSize: 24, color: C.text, textAlign: 'center', marginBottom: 20, fontWeight: 'bold' },
   label: { color: C.label, fontSize: 14, marginBottom: 6, fontWeight: '600', textAlign: 'right' },
   input: { backgroundColor: C.input, padding: 14, borderRadius: 12, marginBottom: 16, fontSize: 16, color: C.text, borderWidth: 1, borderColor: C.border, textAlign: 'right' },
-  primaryBtn: { backgroundColor: C.primary, padding: 15, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
+  primaryBtn: { backgroundColor: C.primary, padding: 15, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   primaryBtnText: { color: C.text, fontSize: 16, fontWeight: 'bold' },
   mediaButtonsRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginTop: 5 },
   mediaBtn: { flex: 0.48, padding: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
@@ -194,5 +201,6 @@ const styles = StyleSheet.create({
   card: { backgroundColor: C.card, padding: 20, borderRadius: 16, marginTop: 15, borderWidth: 1, borderColor: C.border },
   cardText: { color: C.text, fontSize: 16, textAlign: 'right', marginBottom: 5 },
   cardLabel: { color: C.link, fontSize: 16, fontWeight: 'bold', textAlign: 'right' },
-  cardSubText: { color: C.muted, fontSize: 13, marginTop: 5, marginBottom: 15, textAlign: 'right' }
+  cardSubText: { color: C.muted, fontSize: 13, marginTop: 5, marginBottom: 15, textAlign: 'right' },
+  buttonSpacing: { marginTop: 10, borderRadius: 12, overflow: 'hidden' }
 });
