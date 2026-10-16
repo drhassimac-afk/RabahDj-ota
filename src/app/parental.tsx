@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, TextInput, Button, Text, ScrollView, ActivityIndicator, Alert, Pressable } from 'react-native';
+import { StyleSheet, View, TextInput, Text, ScrollView, ActivityIndicator, Alert, Pressable } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BASE_URL } from '../lib/config';
@@ -40,7 +40,7 @@ export default function ParentalScreen() {
 
   const handleRegister = async () => {
     if (!familyName.trim() || !username.trim() || !password) {
-      Alert.alert('تنبيه', 'يرجى ملء كافة الخانات'); return;
+      Alert.alert('تنبيه', 'يرجى ملء كافة الخانات المطلوبة لإنشاء العائلة'); return;
     }
     try {
       setIsLoading(true);
@@ -52,7 +52,7 @@ export default function ParentalScreen() {
       if (res.ok && data?.account?.familyId) {
         Alert.alert('تم إنشاء العائلة بنجاح 🎉', `رقم عائلتك هو: ${data.account.familyId}`);
         setFamilyId(data.account.familyId.toString()); setIsRegistering(false);
-      } else { Alert.alert('تنبيه', data?.error || 'اسم المستخدم مستعمل سابقاً.'); }
+      } else { Alert.alert('تنبيه التسجيل', data?.error || data?.message || 'اسم المستخدم مستعمل سابقاً.'); }
     } catch (err) { Alert.alert('خطأ', 'تعذر الاتصال بالسيرفر السحابي.'); } finally { setIsLoading(false); }
   };
 
@@ -72,9 +72,10 @@ export default function ParentalScreen() {
         await SecureStore.setItemAsync('username', username.trim());
         await SecureStore.setItemAsync('familyId', familyId.trim());
         setPassword(''); setIsConfigured(true);
-      } else { Alert.alert('خطأ', data?.error || 'البيانات غير مطابقة'); }
+      } else { Alert.alert('خطأ في الدخول', data?.error || data?.message || 'البيانات غير مطابقة'); }
     } catch (e) { Alert.alert('خطأ شبكي', 'تعذّر الاتصال بالسيرفر'); } finally { setIsLoading(false); }
   };
+
   const toggleCameraStream = async () => {
     try {
       setIsConnectingStream(true);
@@ -130,7 +131,7 @@ export default function ParentalScreen() {
               <Text style={styles.primaryBtnText}>{isRegistering ? 'إتمام التسجيل وتوليد رقم العائلة 🚀' : 'دخول إلى لوحة التحكم الأبوية 🔒'}</Text>
             </Pressable>
             <Text style={styles.switchText} onPress={() => setIsRegistering(!isRegistering)}>
-              {isRegistering ? 'تملك حساب عائلة بالفعل؟ سجل دخولك الآن' : 'لا تملك رقم عائلة؟ أنشئ حساباً جديداً للأسرة'}
+              {isRegistering ? 'تملك حساب عائلة بالفعل? سجل دخولك الآن' : 'لا تملك رقم عائلة؟ أنشئ حساباً جديداً للأسرة'}
             </Text>
           </View>
         </ScrollView>
@@ -148,8 +149,8 @@ export default function ParentalScreen() {
             <Text style={styles.cardText}>رقم العائلة الموحد: <Text style={{color: C.success, fontWeight:'bold'}}>{familyId}</Text></Text>
           </View>
           <View style={styles.card}>
-            <Text style={styles.cardLabel}>🎥 أدوات المراقبة الحية عن بُعد</Text>
-            <Text style={styles.cardSubText}>اضغط على الأزرار بالأسفل لبدء سحب بث ميديا هاتف الطفل مباشرة:</Text>
+            <Text style={styles.cardLabel}>🎥 ميزات الـ FlashGet Kids الحية عن بُعد</Text>
+            <Text style={styles.cardSubText}>تحكم في الكاميرا واستمع للصوت الفعلي لهاتف الطفل حياً ومباشرة كالمحترفين:</Text>
             <View style={styles.mediaButtonsRow}>
               <Pressable style={({ pressed }) => [styles.mediaBtn, isCameraActive ? styles.btnActive : styles.btnInactive, pressed && { opacity: 0.8 }]} onPress={toggleCameraStream} disabled={isConnectingStream}>
                 {isConnectingStream ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.mediaBtnText}>{isCameraActive ? '🛑 إيقاف الكاميرا' : '📷 فتح الكاميرا حياً'}</Text>}
