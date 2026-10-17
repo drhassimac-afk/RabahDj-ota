@@ -1,1 +1,1 @@
-export const BASE_URL = 'https://onrender.com';
+export const BASE_URL = 'https://rabahdj-parental-backend.onrender.com';
