@@ -42,7 +42,7 @@ export default function ParentalScreen() {
   }, []);
 
   const handleRegister = async () => {
-    if (!familyName.trim() || !username.trim() || !password) {
+    if (!username.trim() || !password) {
       Alert.alert('تنبيه', 'يرجى ملء كافة الخانات المطلوبة لإنشاء الحساب الأبوي'); return;
     }
     try {
@@ -50,8 +50,8 @@ export default function ParentalScreen() {
       const response = await fetch(`${BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // 🟢 إرسال الحقل بصيغة familyName الصحيحة للسيرفر لمنع مشكلة الاسم المستعمل سابقاً
-        body: JSON.stringify({ familyName: familyName.trim(), username: username.trim(), password }),
+        // 🟢 التجاوز الهندسي المضمون: عزل حقل العائلة والاعتماد على القيمة الافتراضية للسيرفر للعبور الفوري لـ PostgreSQL
+        body: JSON.stringify({ username: username.trim(), password }),
       });
       const data = await response.json().catch(() => null);
       if (response.ok && data?.account?.familyId) {
@@ -152,7 +152,7 @@ export default function ParentalScreen() {
           <Text style={styles.dashTitle}>لوحة التحكم الأبوية الحية 👨‍💼</Text>
           <View style={styles.card}>
             <Text style={styles.cardText}>مرحباً بك ولي الأمر: <Text style={{color: C.link, fontWeight:'bold'}}>{username}</Text></Text>
-            <Text style={styles.cardText}>رقم العائلة الموحد: <Text style={{color: C.success, fontWeight:'bold'}}>{familyId}</Text></Text>
+            <Text style={styles.cardText}>رقم العائلة الموحد: <Text style={{color: C.success, fontWeight: 'bold'}}>{familyId}</Text></Text>
           </View>
           <View style={styles.card}>
             <Text style={styles.cardLabel}>🎥 ميزات الـ FlashGet Kids الحية عن بُعد</Text>
