@@ -51,7 +51,11 @@ export default function ParentalScreen() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // 🟢 التجاوز الهندسي المضمون: عزل حقل العائلة والاعتماد على القيمة الافتراضية للسيرفر للعبور الفوري لـ PostgreSQL
-        body: JSON.stringify({ username: username.trim(), password }),
+        body: JSON.stringify({
+          familyName: familyName.trim(),
+          username: username.trim(),
+          password,
+        }),
       });
       const data = await response.json().catch(() => null);
       if (response.ok && data?.account?.familyId) {
