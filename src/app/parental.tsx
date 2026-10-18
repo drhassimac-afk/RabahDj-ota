@@ -1,17 +1,50 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, TextInput, Button, Text, ScrollView, ActivityIndicator, Alert, Pressable } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { BASE_URL } from '../lib/config';
 import { startRemoteStream, stopRemoteStream } from '../lib/guard-sync';
 
 const C = {
-  bg: '#0b1220', card: '#111827', input: '#0d1626', border: '#1e293b',
-  primary: '#2563eb', link: '#60a5fa', text: '#ffffff', label: '#e2e8f0',
-  muted: '#64748b', danger: '#ef4444', success: '#10b981',
+  bg: '#0b1220',
+  card: '#111827',
+  input: '#0d1626',
+  border: '#1e293b',
+  primary: '#2563eb',
+  link: '#60a5fa',
+  text: '#ffffff',
+  label: '#e2e8f0',
+  muted: '#94a3b8',
+  danger: '#ef4444',
+  success: '#10b981',
 };
 
-const esc = (s: string) => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+type Device = {
+  id: number | string;
+  device_name?: string;
+  platform?: string;
+  last_seen_at?: string;
+  child_username?: string;
+};
+
+type UsageRule = {
+  child_account_id?: number;
+  child_username?: string;
+  daily_limit_minutes?: number;
+  bedtime_start?: string | null;
+  bedtime_end?: string | null;
+  enabled?: boolean;
+};
 
 export default function ParentalScreen() {
   const [username, setUsername] = useState('');
@@ -21,95 +54,300 @@ export default function ParentalScreen() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  const [pairingCode, setPairingCode] = useState('');
+  const [pairingError, setPairingError] = useState('');
+  const [isFetchingCode, setIsFetchingCode] = useState(false);
+
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [isFetchingDevices, setIsFetchingDevices] = useState(false);
+
+  const [usageRules, setUsageRules] = useState<UsageRule[]>([]);
+  const [isFetchingRules, setIsFetchingRules] = useState(false);
+
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isMicActive, setIsMicActive] = useState(false);
   const [isConnectingStream, setIsConnectingStream] = useState(false);
-  
-  const insets = useSafeAreaInsets();
 
-  useEffect(() => {
-    async function loadCredentials() {
-      try {
-        const savedUser = await SecureStore.getItemAsync('username');
-        const savedFamily = await SecureStore.getItemAsync('familyId');
-        const savedToken = await SecureStore.getItemAsync('userToken');
-        if (savedUser && savedFamily && savedToken) {
-          setUsername(savedUser); setFamilyId(savedFamily); setIsConfigured(true);
-        }
-      } catch (e) { console.log('خطأ قراءة التخزين الآمن:', e); } finally { setIsLoading(false); }
+  const requestHeaders = (token: string) => ({
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  });
+
+  const fetchLivePairingCode = useCallback(async (token: string) => {
+    if (!token) return;
+
+    setIsFetchingCode(true);
+    setPairingError('');
+
+    try {
+      const response = await fetch(`${BASE_URL}/api/pairing/code`, {
+        method: 'POST',
+        headers: requestHeaders(token),
+      });
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || !data?.code) {
+        setPairingCode('');
+        setPairingError(
+          data?.error || data?.message || 'تعذر إنشاء رمز الاقتران.',
+        );
+        return;
+      }
+
+      setPairingCode(String(data.code));
+    } catch {
+      setPairingCode('');
+      setPairingError('تعذر الاتصال بالخادم لإنشاء الرمز.');
+    } finally {
+      setIsFetchingCode(false);
     }
-    loadCredentials();
   }, []);
 
-  const handleRegister = async () => {
-    if (!username.trim() || !password) {
-      Alert.alert('تنبيه', 'يرجى ملء كافة الخانات المطلوبة لإنشاء الحساب الأبوي'); return;
+  const fetchLiveDevices = useCallback(async (token: string) => {
+    setIsFetchingDevices(true);
+
+    try {
+      const response = await fetch(`${BASE_URL}/api/parent/devices`, {
+        headers: requestHeaders(token),
+      });
+      const data = await response.json().catch(() => null);
+
+      if (response.ok && Array.isArray(data?.devices)) {
+        setDevices(data.devices);
+      } else if (!response.ok) {
+        console.warn('تعذر تحميل الأجهزة:', data?.error || response.status);
+      }
+    } catch (error) {
+      console.warn('خطأ تحميل الأجهزة:', error);
+    } finally {
+      setIsFetchingDevices(false);
     }
+  }, []);
+
+  const fetchLiveUsageRules = useCallback(async (token: string) => {
+    setIsFetchingRules(true);
+
+    try {
+      const response = await fetch(`${BASE_URL}/api/parent/usage-rules`, {
+        headers: requestHeaders(token),
+      });
+      const data = await response.json().catch(() => null);
+
+      if (response.ok && Array.isArray(data?.usageRules)) {
+        setUsageRules(data.usageRules);
+      } else if (!response.ok) {
+        console.warn('تعذر تحميل قواعد الاستخدام:', data?.error || response.status);
+      }
+    } catch (error) {
+      console.warn('خطأ تحميل قواعد الاستخدام:', error);
+    } finally {
+      setIsFetchingRules(false);
+    }
+  }, []);
+
+  const refreshDashboard = useCallback(async (token: string) => {
+    await Promise.all([
+      fetchLivePairingCode(token),
+      fetchLiveDevices(token),
+      fetchLiveUsageRules(token),
+    ]);
+  }, [fetchLivePairingCode, fetchLiveDevices, fetchLiveUsageRules]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadCredentials() {
+      try {
+        const [savedUser, savedFamily, savedToken] = await Promise.all([
+          SecureStore.getItemAsync('username'),
+          SecureStore.getItemAsync('familyId'),
+          SecureStore.getItemAsync('userToken'),
+        ]);
+
+        if (!active) return;
+
+        if (savedUser && savedFamily && savedToken) {
+          setUsername(savedUser);
+          setFamilyId(savedFamily);
+          setIsConfigured(true);
+          await refreshDashboard(savedToken);
+        }
+      } catch (error) {
+        console.warn('تعذر استرجاع جلسة ولي الأمر:', error);
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    }
+
+    loadCredentials();
+
+    return () => {
+      active = false;
+    };
+  }, [refreshDashboard]);
+
+  const handleRegister = async () => {
+    if (!familyName.trim() || !username.trim() || !password) {
+      Alert.alert('بيانات ناقصة', 'أدخل اسم العائلة واسم المستخدم وكلمة المرور.');
+      return;
+    }
+
     try {
       setIsLoading(true);
+
       const response = await fetch(`${BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // 🟢 التجاوز الهندسي المضمون: عزل حقل العائلة والاعتماد على القيمة الافتراضية للسيرفر للعبور الفوري لـ PostgreSQL
         body: JSON.stringify({
           familyName: familyName.trim(),
           username: username.trim(),
           password,
         }),
       });
+
       const data = await response.json().catch(() => null);
+
       if (response.ok && data?.account?.familyId) {
-        Alert.alert('تم إنشاء العائلة بنجاح 🎉', `رقم عائلتك الموحد السحابي: ${data.account.familyId}`);
-        setFamilyId(data.account.familyId.toString()); setIsRegistering(false);
-      } else { Alert.alert('تنبيه التسجيل', data?.error || data?.message || 'البيانات المرسلة غير متوافقة'); }
-    } catch (err) { Alert.alert('خطأ', 'تعذر الوصول إلى الخادم لإنشاء العائلة'); } finally { setIsLoading(false); }
+        const newFamilyId = String(data.account.familyId);
+        setFamilyId(newFamilyId);
+        setPassword('');
+        setIsRegistering(false);
+
+        Alert.alert(
+          'تم إنشاء العائلة',
+          `رقم العائلة الخاص بك هو: ${newFamilyId}\nاحتفظ به، ثم سجّل الدخول باستخدامه.`,
+        );
+      } else {
+        Alert.alert(
+          'تعذر التسجيل',
+          data?.error || data?.message || 'لم يتم إنشاء الحساب.',
+        );
+      }
+    } catch {
+      Alert.alert('خطأ في الاتصال', 'تعذر الوصول إلى خادم التسجيل.');
+    } finally {
+      setIsLoading(false);
+    }
   };
+
   const handleLogin = async () => {
     if (!familyId.trim() || !username.trim() || !password) {
-      Alert.alert('بيانات ناقصة', 'أدخل رقم العائلة واسم المستخدم وكلمة المرور.'); return;
+      Alert.alert('بيانات ناقصة', 'أدخل رقم العائلة واسم المستخدم وكلمة المرور.');
+      return;
     }
+
     try {
       setIsLoading(true);
+
       const response = await fetch(`${BASE_URL}/api/auth/login`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ familyId: familyId.trim(), username: username.trim(), password }),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          familyId: familyId.trim(),
+          username: username.trim(),
+          password,
+        }),
       });
+
       const data = await response.json().catch(() => null);
-      if (response.ok && data?.token) {
-        await SecureStore.setItemAsync('userToken', data.token);
-        await SecureStore.setItemAsync('username', username.trim());
-        await SecureStore.setItemAsync('familyId', familyId.trim());
-        setPassword(''); setIsConfigured(true);
-      } else { Alert.alert('خطأ في الدخول', data?.error || data?.message || 'البيانات غير مطابقة'); }
-    } catch (e) { Alert.alert('خطأ شبكي', 'تعذّر الاتصال بالسيرفر'); } finally { setIsLoading(false); }
+
+      if (!response.ok || !data?.token) {
+        Alert.alert(
+          'تعذر تسجيل الدخول',
+          data?.error || data?.message || 'تحقق من بيانات الدخول.',
+        );
+        return;
+      }
+
+      await Promise.all([
+        SecureStore.setItemAsync('userToken', data.token),
+        SecureStore.setItemAsync('username', username.trim()),
+        SecureStore.setItemAsync('familyId', familyId.trim()),
+      ]);
+
+      setPassword('');
+      setIsConfigured(true);
+      await refreshDashboard(data.token);
+    } catch {
+      Alert.alert('خطأ شبكي', 'تعذر الاتصال بالخادم.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleReset = () => {
+    Alert.alert(
+      'تسجيل الخروج',
+      'هل تريد تسجيل الخروج من حساب ولي الأمر على هذا الجهاز؟',
+      [
+        { text: 'إلغاء', style: 'cancel' },
+        {
+          text: 'تسجيل الخروج',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await Promise.all([
+                SecureStore.deleteItemAsync('username'),
+                SecureStore.deleteItemAsync('familyId'),
+                SecureStore.deleteItemAsync('userToken'),
+              ]);
+              setUsername('');
+              setPassword('');
+              setFamilyId('');
+              setPairingCode('');
+              setPairingError('');
+              setDevices([]);
+              setUsageRules([]);
+              setIsConfigured(false);
+            } catch {
+              Alert.alert('خطأ', 'تعذر إنهاء الجلسة بشكل صحيح.');
+            }
+          },
+        },
+      ],
+    );
   };
 
   const toggleCameraStream = async () => {
+    if (isConnectingStream) return;
+
     try {
       setIsConnectingStream(true);
-      if (!isCameraActive) { await startRemoteStream(familyId + '_cam'); setIsCameraActive(true); }
-      else { await stopRemoteStream(); setIsCameraActive(false); }
-    } catch (e) { Alert.alert('خطأ', 'فشل معالج البث المباشر.'); } finally { setIsConnectingStream(false); }
+
+      if (!isCameraActive) {
+        await startRemoteStream(`${familyId}_cam`);
+        setIsCameraActive(true);
+      } else {
+        await stopRemoteStream();
+        setIsCameraActive(false);
+      }
+    } catch {
+      Alert.alert('تعذر تشغيل البث', 'لم يتم تشغيل البث. تحقق من إعدادات الجهاز والخادم.');
+    } finally {
+      setIsConnectingStream(false);
+    }
   };
 
   const toggleMicStream = async () => {
     try {
-      if (!isMicActive) { await startRemoteStream(familyId + '_mic'); setIsMicActive(true); }
-      else { await stopRemoteStream(); setIsMicActive(false); }
-    } catch (e) { console.log(e); }
-  };
-
-  const handleReset = async () => {
-    await SecureStore.deleteItemAsync('username');
-    await SecureStore.deleteItemAsync('familyId');
-    await SecureStore.deleteItemAsync('userToken');
-    setPassword(''); setIsConfigured(false);
+      if (!isMicActive) {
+        await startRemoteStream(`${familyId}_mic`);
+        setIsMicActive(true);
+      } else {
+        await stopRemoteStream();
+        setIsMicActive(false);
+      }
+    } catch {
+      Alert.alert('تعذر تشغيل الصوت', 'لم يتم تشغيل الصوت. تحقق من إعدادات الجهاز والخادم.');
+    }
   };
 
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.safeArea, styles.center]}>
-        <ActivityIndicator size="large" color={C.primary} />
+        <ActivityIndicator size="large" color={C.link} />
+        <Text style={styles.mutedText}>جارٍ تحميل الحساب...</Text>
       </SafeAreaView>
     );
   }
@@ -117,32 +355,87 @@ export default function ParentalScreen() {
   if (!isConfigured) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.formContainer}>
-            <Text style={styles.title}>{isRegistering ? 'إنشاء حساب عائلة جديد 👨‍👩‍👦' : 'تسجيل دخول ولي الأمر 🔒'}</Text>
+            <Text style={styles.title}>
+              {isRegistering ? 'إنشاء حساب عائلة 👨‍👩‍👧' : 'دخول ولي الأمر 🔒'}
+            </Text>
+
             {isRegistering ? (
               <>
-                <Text style={styles.label}>اسم أو لقب العائلة:</Text>
-                <TextInput style={styles.input} placeholder="مثال: عائلة رباح" placeholderTextColor={C.muted} value={familyName} onChangeText={setFamilyName} />
+                <Text style={styles.label}>اسم العائلة</Text>
+                <TextInput
+                  style={styles.input}
+                  value={familyName}
+                  onChangeText={setFamilyName}
+                  placeholder="مثال: عائلة رباح"
+                  placeholderTextColor={C.muted}
+                  autoCapitalize="words"
+                />
               </>
             ) : (
               <>
-                <Text style={styles.label}>رقم العائلة الموحد (Family ID):</Text>
-                <TextInput style={styles.input} placeholder="أدخل رقم العائلة" placeholderTextColor={C.muted} value={familyId} onChangeText={setFamilyId} keyboardType="numeric" />
+                <Text style={styles.label}>رقم العائلة (Family ID)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={familyId}
+                  onChangeText={setFamilyId}
+                  placeholder="أدخل رقم العائلة"
+                  placeholderTextColor={C.muted}
+                  keyboardType="numeric"
+                />
               </>
             )}
-            <Text style={styles.label}>اسم المستخدم لولي الأمر:</Text>
-            <TextInput style={styles.input} placeholder="اختر اسم مستخدم" placeholderTextColor={C.muted} value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} />
-            <Text style={styles.label}>كلمة المرور السرية:</Text>
-            <TextInput style={styles.input} placeholder="أدخل كلمة السر" placeholderTextColor={C.muted} value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} />
-            <View style={styles.buttonSpacing}>
-              <Pressable style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.8 }]} onPress={isRegistering ? handleRegister : handleLogin}>
-                <Text style={styles.primaryBtnText}>{isRegistering ? 'إتمام التسجيل وتوليد رقم العائلة 🚀' : 'دخول إلى لوحة التحكم الأبوية 🔒'}</Text>
-              </Pressable>
-            </View>
-            <Text style={styles.switchText} onPress={() => setIsRegistering(!isRegistering)}>
-              {isRegistering ? 'تملك حساب عائلة بالفعل؟ سجل دخولك الآن' : 'لا تملك رقم عائلة؟ أنشئ حساباً جديداً للأسرة'}
-            </Text>
+
+            <Text style={styles.label}>اسم المستخدم لولي الأمر</Text>
+            <TextInput
+              style={styles.input}
+              value={username}
+              onChangeText={setUsername}
+              placeholder="اسم المستخدم"
+              placeholderTextColor={C.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <Text style={styles.label}>كلمة المرور</Text>
+            <TextInput
+              style={styles.input}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="أدخل كلمة المرور"
+              placeholderTextColor={C.muted}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                pressed && styles.pressed,
+              ]}
+              disabled={isLoading}
+              onPress={isRegistering ? handleRegister : handleLogin}
+            >
+              <Text style={styles.primaryBtnText}>
+                {isRegistering ? 'إنشاء حساب العائلة' : 'تسجيل الدخول'}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setIsRegistering(value => !value)}
+              style={styles.switchBtn}
+            >
+              <Text style={styles.switchText}>
+                {isRegistering
+                  ? 'لديك حساب؟ سجّل الدخول'
+                  : 'ليس لديك حساب عائلة؟ أنشئ حسابًا'}
+              </Text>
+            </Pressable>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -151,60 +444,338 @@ export default function ParentalScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={isFetchingDevices || isFetchingRules}
+            onRefresh={async () => {
+              const token = await SecureStore.getItemAsync('userToken');
+              if (token) await refreshDashboard(token);
+            }}
+            tintColor={C.link}
+          />
+        }
+      >
         <View style={styles.dashboardContainer}>
-          <Text style={styles.dashTitle}>لوحة التحكم الأبوية الحية 👨‍💼</Text>
+          <Text style={styles.dashTitle}>لوحة التحكم الأبوية</Text>
+
           <View style={styles.card}>
-            <Text style={styles.cardText}>مرحباً بك ولي الأمر: <Text style={{color: C.link, fontWeight:'bold'}}>{username}</Text></Text>
-            <Text style={styles.cardText}>رقم العائلة الموحد: <Text style={{color: C.success, fontWeight: 'bold'}}>{familyId}</Text></Text>
+            <Text style={styles.cardText}>
+              ولي الأمر: <Text style={styles.linkText}>{username}</Text>
+            </Text>
+            <Text style={styles.cardText}>
+              رقم العائلة: <Text style={styles.successText}>{familyId}</Text>
+            </Text>
           </View>
+
           <View style={styles.card}>
-            <Text style={styles.cardLabel}>🎥 ميزات الـ FlashGet Kids الحية عن بُعد</Text>
-            <Text style={styles.cardSubText}>تحكم في الكاميرا واستمع للصوت الفعلي لهاتف الطفل حياً ومباشرة كالمحترفين:</Text>
+            <Text style={styles.cardLabel}>🔑 رمز اقتران جهاز الطفل</Text>
+            <Text style={styles.cardSubText}>
+              أنشئ رمزًا من الخادم، ثم أدخله في جهاز الطفل لإكمال الربط.
+            </Text>
+
+            {isFetchingCode ? (
+              <ActivityIndicator
+                size="large"
+                color={C.link}
+                style={styles.loader}
+              />
+            ) : pairingError ? (
+              <Text style={styles.errorText}>{pairingError}</Text>
+            ) : (
+              <Text selectable style={styles.roomCode}>
+                {pairingCode || '--------'}
+              </Text>
+            )}
+
+            <Pressable
+              disabled={isFetchingCode}
+              onPress={async () => {
+                const token = await SecureStore.getItemAsync('userToken');
+                if (!token) {
+                  setPairingError('انتهت الجلسة. سجّل الدخول مجددًا.');
+                  return;
+                }
+                await fetchLivePairingCode(token);
+              }}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                styles.actionBtn,
+                (pressed || isFetchingCode) && styles.pressed,
+              ]}
+            >
+              <Text style={styles.primaryBtnText}>
+                {isFetchingCode ? 'جارٍ إنشاء الرمز...' : 'إنشاء رمز اقتران جديد 🔄'}
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.cardLabel}>📱 أجهزة العائلة المرتبطة</Text>
+
+            {isFetchingDevices && devices.length === 0 ? (
+              <ActivityIndicator color={C.link} style={styles.loader} />
+            ) : devices.length === 0 ? (
+              <Text style={styles.mutedText}>
+                لا توجد أجهزة مرتبطة يعرضها الخادم حاليًا. اربط جهاز الطفل باستخدام رمز الاقتران.
+              </Text>
+            ) : (
+              devices.map((device, index) => (
+                <View key={String(device.id ?? index)} style={styles.deviceRow}>
+                  <Text style={styles.cardText}>
+                    {device.device_name || 'جهاز بدون اسم'}
+                  </Text>
+                  <Text style={styles.mutedText}>
+                    المستخدم: {device.child_username || 'غير محدد'}
+                  </Text>
+                  <Text style={styles.mutedText}>
+                    النظام: {device.platform || 'غير معروف'}
+                  </Text>
+                  {device.last_seen_at ? (
+                    <Text style={styles.mutedText}>
+                      آخر اتصال: {device.last_seen_at}
+                    </Text>
+                  ) : null}
+                </View>
+              ))
+            )}
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.cardLabel}>⏱️ قواعد الاستخدام</Text>
+
+            {isFetchingRules && usageRules.length === 0 ? (
+              <ActivityIndicator color={C.link} style={styles.loader} />
+            ) : usageRules.length === 0 ? (
+              <Text style={styles.mutedText}>
+                لا توجد قواعد استخدام يعرضها الخادم حاليًا.
+              </Text>
+            ) : (
+              usageRules.map((rule, index) => (
+                <View
+                  key={String(rule.child_account_id ?? index)}
+                  style={styles.deviceRow}
+                >
+                  <Text style={styles.cardText}>
+                    الطفل: {rule.child_username || 'غير محدد'}
+                  </Text>
+                  <Text style={styles.mutedText}>
+                    الحد اليومي: {rule.daily_limit_minutes ?? 'غير محدد'} دقيقة
+                  </Text>
+                  <Text style={styles.mutedText}>
+                    وقت النوم: {rule.bedtime_start || '--:--'} - {rule.bedtime_end || '--:--'}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.cardText,
+                      { color: rule.enabled ? C.success : C.danger },
+                    ]}
+                  >
+                    {rule.enabled ? 'القواعد مفعّلة' : 'القواعد غير مفعّلة'}
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.cardLabel}>🎥 أدوات البث عن بُعد</Text>
+            <Text style={styles.cardSubText}>
+              تعمل هذه الأزرار وفق دعم الجهاز والصلاحيات وتنفيذ خدمة البث.
+            </Text>
+
             <View style={styles.mediaButtonsRow}>
-              <Pressable style={({ pressed }) => [styles.mediaBtn, isCameraActive ? styles.btnActive : styles.btnInactive, pressed && { opacity: 0.8 }]} onPress={toggleCameraStream} disabled={isConnectingStream}>
-                {isConnectingStream ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.mediaBtnText}>{isCameraActive ? '🛑 إيقاف الكاميرا' : '📷 فتح الكاميرا حياً'}</Text>}
+              <Pressable
+                disabled={isConnectingStream}
+                onPress={toggleCameraStream}
+                style={[
+                  styles.mediaBtn,
+                  isCameraActive ? styles.btnActive : styles.btnInactive,
+                ]}
+              >
+                {isConnectingStream ? (
+                  <ActivityIndicator color={C.text} />
+                ) : (
+                  <Text style={styles.mediaBtnText}>
+                    {isCameraActive ? 'إيقاف الكاميرا' : 'تشغيل الكاميرا'}
+                  </Text>
+                )}
               </Pressable>
-              <Pressable style={({ pressed }) => [styles.mediaBtn, isMicActive ? styles.btnActive : styles.btnInactive, pressed && { opacity: 0.8 }]} onPress={toggleMicStream}>
-                <Text style={styles.mediaBtnText}>{isMicActive ? '🔇 كتم الصوت' : '🎙️ استماع للصوت'}</Text>
+
+              <Pressable
+                onPress={toggleMicStream}
+                style={[
+                  styles.mediaBtn,
+                  isMicActive ? styles.btnActive : styles.btnInactive,
+                ]}
+              >
+                <Text style={styles.mediaBtnText}>
+                  {isMicActive ? 'إيقاف الصوت' : 'تشغيل الصوت'}
+                </Text>
               </Pressable>
             </View>
           </View>
-          <View style={styles.card}>
-            <Text style={[styles.cardLabel, {color: C.success}]}>📡 حالة اتصال الأجهزة المتصلة</Text>
-            <Text style={{color: C.text, fontSize: 14, marginTop: 10, textAlign:'right'}}>• هاتف الطفل (Samsung Tab): <Text style={{color: C.success, fontWeight:'bold'}}>نشط ومربوط</Text></Text>
-          </View>
-          <Pressable style={({ pressed }) => [styles.dangerBtn, pressed && { opacity: 0.8 }, { marginTop: 30 }]} onPress={handleReset}>
-            <Text style={styles.dangerBtnText}>⚙️ تسجيل الخروج وتعديل الحساب الأبوي</Text>
+
+          <Pressable
+            onPress={handleReset}
+            style={({ pressed }) => [
+              styles.dangerBtn,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.primaryBtnText}>تسجيل الخروج</Text>
           </Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
+
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: C.bg },
-  container: { flexGrow: 1, backgroundColor: C.bg, justifyContent: 'center', padding: 20 },
+  container: { flexGrow: 1, backgroundColor: C.bg, padding: 20 },
   center: { alignItems: 'center', justifyContent: 'center' },
-  formContainer: { backgroundColor: C.card, padding: 25, borderRadius: 20, borderWidth: 1, borderColor: C.border },
+  formContainer: {
+    backgroundColor: C.card,
+    padding: 24,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginTop: 20,
+  },
   dashboardContainer: { width: '100%' },
-  title: { fontSize: 22, color: C.text, textAlign: 'center', marginBottom: 25, fontWeight: 'bold' },
-  dashTitle: { fontSize: 24, color: C.text, textAlign: 'center', marginBottom: 20, fontWeight: 'bold' },
-  label: { color: C.label, fontSize: 14, marginBottom: 6, fontWeight: '600', textAlign: 'right' },
-  input: { backgroundColor: C.input, padding: 14, borderRadius: 12, marginBottom: 16, fontSize: 16, color: C.text, borderWidth: 1, borderColor: C.border, textAlign: 'right' },
-  primaryBtn: { backgroundColor: C.primary, padding: 15, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  primaryBtnText: { color: C.text, fontSize: 16, fontWeight: 'bold' },
-  mediaButtonsRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginTop: 5 },
-  mediaBtn: { flex: 0.48, padding: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  title: {
+    fontSize: 22,
+    color: C.text,
+    textAlign: 'center',
+    marginBottom: 25,
+    fontWeight: 'bold',
+  },
+  dashTitle: {
+    fontSize: 24,
+    color: C.text,
+    textAlign: 'center',
+    marginBottom: 12,
+    fontWeight: 'bold',
+  },
+  label: {
+    color: C.label,
+    fontSize: 14,
+    marginBottom: 7,
+    fontWeight: '600',
+    textAlign: 'right',
+  },
+  input: {
+    backgroundColor: C.input,
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 16,
+    fontSize: 16,
+    color: C.text,
+    borderWidth: 1,
+    borderColor: C.border,
+    textAlign: 'right',
+  },
+  primaryBtn: {
+    backgroundColor: C.primary,
+    padding: 15,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionBtn: { marginTop: 12 },
+  primaryBtnText: { color: C.text, fontSize: 15, fontWeight: 'bold' },
+  pressed: { opacity: 0.7 },
+  switchBtn: { paddingVertical: 16 },
+  switchText: { color: C.link, textAlign: 'center', fontSize: 14 },
+  card: {
+    backgroundColor: C.card,
+    padding: 18,
+    borderRadius: 16,
+    marginTop: 15,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  cardText: {
+    color: C.text,
+    fontSize: 15,
+    textAlign: 'right',
+    marginBottom: 6,
+  },
+  linkText: { color: C.link, fontWeight: 'bold' },
+  successText: { color: C.success, fontWeight: 'bold' },
+  cardLabel: {
+    color: C.link,
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'right',
+  },
+  cardSubText: {
+    color: C.muted,
+    fontSize: 13,
+    marginTop: 8,
+    marginBottom: 10,
+    textAlign: 'right',
+    lineHeight: 21,
+  },
+  roomCode: {
+    fontSize: 34,
+    color: C.success,
+    letterSpacing: 6,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginVertical: 14,
+  },
+  loader: { marginVertical: 16 },
+  errorText: {
+    color: C.danger,
+    fontSize: 13,
+    textAlign: 'center',
+    marginVertical: 12,
+  },
+  mutedText: {
+    color: C.muted,
+    fontSize: 13,
+    textAlign: 'right',
+    marginTop: 5,
+    lineHeight: 20,
+  },
+  deviceRow: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  mediaButtonsRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 8,
+  },
+  mediaBtn: {
+    flex: 1,
+    padding: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
   btnInactive: { backgroundColor: '#1e293b', borderWidth: 1, borderColor: C.border },
-  btnActive: { backgroundColor: '#ef4444' },
-  mediaBtnText: { color: C.text, fontSize: 14, fontWeight: 'bold' },
-  dangerBtn: { backgroundColor: C.danger, padding: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center', width: '100%' },
-  dangerBtnText: { color: C.text, fontSize: 15, fontWeight: 'bold' },
-  switchText: { color: C.link, textAlign: 'center', marginTop: 22, textDecorationLine: 'underline', fontSize: 14, fontWeight: '500' },
-  card: { backgroundColor: C.card, padding: 20, borderRadius: 16, marginTop: 15, borderWidth: 1, borderColor: C.border },
-  cardText: { color: C.text, fontSize: 16, textAlign: 'right', marginBottom: 5 },
-  cardLabel: { color: C.link, fontSize: 16, fontWeight: 'bold', textAlign: 'right' },
-  cardSubText: { color: C.muted, fontSize: 13, marginTop: 5, marginBottom: 15, textAlign: 'right' },
-  buttonSpacing: { marginTop: 10, borderRadius: 12, overflow: 'hidden' }
+  btnActive: { backgroundColor: '#b91c1c' },
+  mediaBtnText: {
+    color: C.text,
+    fontSize: 13,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  dangerBtn: {
+    backgroundColor: C.danger,
+    padding: 15,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    marginTop: 24,
+    marginBottom: 20,
+  },
 });
