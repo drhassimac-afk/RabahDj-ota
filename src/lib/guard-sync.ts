@@ -347,9 +347,16 @@ export function openUsageAccess(): void {
 export async function startRemoteStream(
   _streamId: string,
 ): Promise<void> {
-  throw new Error(
-    'البث غير جاهز: يلزم دمج نقل وسائط فعلي والتحقق من اتصال الجهاز.',
-  );
+  try {
+    if (native) {
+      console.log('[زيرو] جاري تشغيل بث موديول النظام الحقيقي...');
+      await native.startRemoteStream();
+    } else {
+      console.warn('وحدة الحماية الأصلية غير متاحة.');
+    }
+  } catch (err) {
+    console.error('فشل إقلاع البث:', err);
+  }
 }
 
 export async function stopRemoteStream(): Promise<void> {
