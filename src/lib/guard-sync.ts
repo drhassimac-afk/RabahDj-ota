@@ -96,7 +96,6 @@ export async function saveChildCredentials(
 export async function clearChildCredentials(): Promise<void> {
   await SecureStore.deleteItemAsync(CRED_KEY);
   // [زيرو] تشغيل مستمع البث الفوري فور حفظ البيانات
-  if(credentials?.familyId) { listenToRemoteStreamCommands(String(credentials.familyId)); }
   accessToken = null;
 }
 
@@ -153,7 +152,6 @@ async function api(
 
   if (response.status === 401 && retry) {
   // [زيرو] تشغيل مستمع البث الفوري فور حفظ البيانات
-  if(credentials?.familyId) { listenToRemoteStreamCommands(String(credentials.familyId)); }
     accessToken = null;
     return api(path, init, false);
   }
@@ -421,38 +419,32 @@ export function useGuard(): LockState & {
 // [زيرو] تفعيل قنوات البث الفوري الحقيقي وربط موديول المراقبة عن بعد بالنظام
 import { io } from 'socket.io-client';
 
+let pollingInterval: any = null;
 export function listenToRemoteStreamCommands(familyId: string) {
-  const socket = io('https://rabahdj-parental-backend.onrender.com', {
-    transports: ['websocket'],
-    autoConnect: true
-  });
-
-  socket.on('connect', () => {
-    console.log('[زيرو] هاتف الطفل متصل الآن حياً بالسيرفر، الغرفة:', familyId);
-    socket.emit('join_room', familyId);
-  });
-
-  // الاستماع لأمر بدء البث الفعلي من لوحة تحكم الأب
-  socket.on('start_stream', async () => {
+  if (pollingInterval) clearInterval(pollingInterval);
+  console.log('[زيرو] بدء جلب الأوامر دورياً للعائلة:', familyId);
+  pollingInterval = setInterval(async () => {
     try {
-      if (native) {
-        console.log('[زيرو] استقبال أمر تشغيل البث... جاري استدعاء موديول النظام الفعلي');
-        await native.startRemoteStream();
+      if (!accessToken) return;
+      const response = await fetch(`${BASE_URL}/api/commands`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (!response.ok) return;
+      const data = await response.json();
+      const commands = data?.commands || [];
+      for (const cmd of commands) {
+        if (cmd.type === 'start_stream' && native) {
+          console.log('[زيرو] تنفيذ أمر تشغيل البث الحي...');
+          await native.startRemoteStream();
+          await fetch(`${BASE_URL}/api/commands/${cmd.id}/acknowledge`, { method: 'POST', headers: { 'Authorization': `Bearer ${accessToken}` } });
+        } else if (cmd.type === 'stop_stream' && native) {
+          console.log('[زيرو] تنفيذ أمر إيقاف البث الحي...');
+          await native.stopRemoteStream();
+          await fetch(`${BASE_URL}/api/commands/${cmd.id}/acknowledge`, { method: 'POST', headers: { 'Authorization': `Bearer ${accessToken}` } });
+        }
       }
     } catch (err) {
-      console.error('فشل تشغيل موديول البث الحي:', err);
+      console.error('خطأ الاستدعاء الدوري:', err);
     }
-  });
-
-  // الاستماع لأمر إيقاف البث
-  socket.on('stop_stream', async () => {
-    try {
-      if (native) {
-        console.log('[زيرو] استقبال أمر إيقاف البث الحي');
-        await native.stopRemoteStream();
-      }
-    } catch (err) {
-      console.error('فشل إيقاف موديول البث:', err);
-    }
-  });
+  }, 5000);
 }
