@@ -60,6 +60,7 @@
     "@react-native-community/cli": "^20.2.0",
     "@react-native/metro-config": "^0.87.1",
     "@types/react": "~19.2.4",
+    "patch-package": "^8.0.1",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -69,7 +70,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "eas-build-post-install": "bash ./fix-notification-listener.sh"
+    "eas-build-post-install": "bash ./fix-notification-listener.sh",
+    "postinstall": "patch-package"
   },
   "private": true,
   "expo": {
