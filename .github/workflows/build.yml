@@ -24,6 +24,11 @@ jobs:
       - name: Prebuild Android System
         run: npx expo prebuild --platform android --clean
 
+      - name: Pin Gradle to Stable Version 8.10.2
+        run: |
+          cd android
+          ./gradlew wrapper --gradle-version 8.10.2 --distribution-type bin
+
       - name: Assemble Release APK
         run: |
           cd android
