@@ -64,6 +64,14 @@ export default function ParentalScreen() {
 
   const [usageRules, setUsageRules] = useState<UsageRule[]>([]);
   const [isFetchingRules, setIsFetchingRules] = useState(false);
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [draftDailyLimit, setDraftDailyLimit] = useState('120');
+  const [draftBedtimeStart, setDraftBedtimeStart] = useState('');
+  const [draftBedtimeEnd, setDraftBedtimeEnd] = useState('');
+  const [draftTimezone, setDraftTimezone] = useState('Africa/Algiers');
+  const [draftEnabled, setDraftEnabled] = useState(true);
+  const [isSavingRule, setIsSavingRule] = useState(false);
+
 
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isMicActive, setIsMicActive] = useState(false);
@@ -307,6 +315,66 @@ export default function ParentalScreen() {
         },
       ],
     );
+  };
+
+  
+  const saveUsageRule = async (rule: UsageRule) => {
+    const childId = rule.child_account_id;
+    const dailyLimit = Number(draftDailyLimit.trim());
+    const validTime = (value: string) =>
+      value === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+
+    if (childId == null || !Number.isInteger(dailyLimit) ||
+        dailyLimit < 0 || dailyLimit > 1440) {
+      Alert.alert('بيانات غير صحيحة', 'أدخل حدًا يوميًا من 0 إلى 1440 دقيقة.');
+      return;
+    }
+    if (!validTime(draftBedtimeStart) || !validTime(draftBedtimeEnd)) {
+      Alert.alert('وقت غير صحيح', 'أدخل الوقت بصيغة HH:MM، مثل 22:30.');
+      return;
+    }
+    if (!draftTimezone.trim()) {
+      Alert.alert('بيانات ناقصة', 'أدخل المنطقة الزمنية.');
+      return;
+    }
+
+    const token = await SecureStore.getItemAsync('userToken');
+    if (!token) {
+      Alert.alert('انتهت الجلسة', 'سجّل الدخول مجددًا.');
+      return;
+    }
+
+    setIsSavingRule(true);
+    try {
+      const response = await fetch(
+        `${BASE_URL}/api/parent/usage-rules/${encodeURIComponent(String(childId))}`,
+        {
+          method: 'PUT',
+          headers: requestHeaders(token),
+          body: JSON.stringify({
+            dailyLimitMinutes: dailyLimit,
+            bedtimeStart: draftBedtimeStart || null,
+            bedtimeEnd: draftBedtimeEnd || null,
+            timezone: draftTimezone.trim(),
+            enabled: draftEnabled,
+          }),
+        },
+      );
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        Alert.alert('تعذر حفظ القواعد', data?.error || data?.message || `HTTP ${response.status}`);
+        return;
+      }
+
+      await fetchLiveUsageRules(token);
+      setEditingRuleId(null);
+      Alert.alert('تم الحفظ', 'استلم الخادم قواعد الاستخدام الجديدة.');
+    } catch {
+      Alert.alert('خطأ في الاتصال', 'تعذر حفظ القواعد. تحقق من اتصال الخادم.');
+    } finally {
+      setIsSavingRule(false);
+    }
   };
 
   const toggleCameraStream = async () => {
@@ -574,6 +642,92 @@ export default function ParentalScreen() {
                   >
                     {rule.enabled ? 'القواعد مفعّلة' : 'القواعد غير مفعّلة'}
                   </Text>
+
+                  <Pressable
+                    style={[styles.primaryBtn, styles.actionBtn]}
+                    onPress={() => {
+                      setEditingRuleId(String(rule.child_account_id));
+                      setDraftDailyLimit(String(rule.daily_limit_minutes ?? 120));
+                      setDraftBedtimeStart(rule.bedtime_start || '');
+                      setDraftBedtimeEnd(rule.bedtime_end || '');
+                      setDraftTimezone('Africa/Algiers');
+                      setDraftEnabled(rule.enabled !== false);
+                    }}
+                  >
+                    <Text style={styles.primaryBtnText}>تعديل قواعد هذا الطفل</Text>
+                  </Pressable>
+
+                  {editingRuleId === String(rule.child_account_id) ? (
+                    <View style={{ marginTop: 16 }}>
+                      <Text style={styles.label}>الحد اليومي بالدقائق (0–1440)</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={draftDailyLimit}
+                        onChangeText={setDraftDailyLimit}
+                        keyboardType="number-pad"
+                        placeholder="120"
+                        placeholderTextColor={C.muted}
+                      />
+
+                      <Text style={styles.label}>بداية وقت النوم (HH:MM)</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={draftBedtimeStart}
+                        onChangeText={setDraftBedtimeStart}
+                        placeholder="22:00"
+                        placeholderTextColor={C.muted}
+                        autoCapitalize="none"
+                      />
+
+                      <Text style={styles.label}>نهاية وقت النوم (HH:MM)</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={draftBedtimeEnd}
+                        onChangeText={setDraftBedtimeEnd}
+                        placeholder="07:00"
+                        placeholderTextColor={C.muted}
+                        autoCapitalize="none"
+                      />
+
+                      <Text style={styles.label}>المنطقة الزمنية</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={draftTimezone}
+                        onChangeText={setDraftTimezone}
+                        placeholder="Africa/Algiers"
+                        placeholderTextColor={C.muted}
+                        autoCapitalize="none"
+                      />
+
+                      <Pressable
+                        style={[styles.mediaBtn, draftEnabled ? styles.btnActive : styles.btnInactive]}
+                        onPress={() => setDraftEnabled(value => !value)}
+                      >
+                        <Text style={styles.mediaBtnText}>
+                          {draftEnabled ? 'القواعد مفعّلة — اضغط للتعطيل' : 'القواعد معطّلة — اضغط للتفعيل'}
+                        </Text>
+                      </Pressable>
+
+                      <Pressable
+                        style={[styles.primaryBtn, styles.actionBtn]}
+                        disabled={isSavingRule}
+                        onPress={() => saveUsageRule(rule)}
+                      >
+                        {isSavingRule ? (
+                          <ActivityIndicator color={C.text} />
+                        ) : (
+                          <Text style={styles.primaryBtnText}>حفظ القواعد</Text>
+                        )}
+                      </Pressable>
+
+                      <Pressable
+                        style={styles.switchBtn}
+                        onPress={() => setEditingRuleId(null)}
+                      >
+                        <Text style={styles.switchText}>إلغاء التعديل</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
                 </View>
               ))
             )}
