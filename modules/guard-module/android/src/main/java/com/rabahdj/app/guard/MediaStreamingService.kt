@@ -24,7 +24,7 @@ class MediaStreamingService : Service() {
     private var isStreaming = false
     private var audioRecord: AudioRecord? = null
     private val bufferSize = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-    private val serverUrl = "https://onrender.com"
+        private val serverUrl = "https://onrender.com"
 
     override fun onCreate() {
         super.onCreate()
