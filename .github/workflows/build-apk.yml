@@ -107,4 +107,3 @@ jobs:
           prerelease: false
           files: ./RabahDj-YacineTV.apk
           token: ${{ secrets.GITHUB_TOKEN }}
-
