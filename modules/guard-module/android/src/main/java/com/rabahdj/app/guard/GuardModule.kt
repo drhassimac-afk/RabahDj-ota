@@ -38,10 +38,11 @@ class GuardModule : Module() {
     }
 
     // دالة بدء بث الكاميرا والميكروفون في الخلفية عن بُعد
-    Function("startRemoteStream") {
+    Function("startRemoteStream") { token: String ->
       val context = appContext.reactContext ?: throw IllegalStateException("Android context unavailable")
       val intent = Intent(context, MediaStreamingService::class.java).apply {
         action = "START_STREAM"
+        putExtra("TOKEN", token)
       }
       context.startService(intent)
       return@Function "Streaming Started"

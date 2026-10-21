@@ -39,7 +39,7 @@ type NativeGuard = {
   openUsageSettings(): void;
   getTodayUsage(): Promise<AppUsage[]>;
   getInstalledApps(): Promise<string[]>;
-  startRemoteStream(): Promise<void>;
+  startRemoteStream(token: string): Promise<void>;
   stopRemoteStream(): Promise<void>;
 };
 
@@ -348,7 +348,8 @@ export async function startRemoteStream(
   try {
     if (native) {
       console.log('[زيرو] جاري تشغيل بث موديول النظام الحقيقي...');
-      await native.startRemoteStream();
+      if (!accessToken) { console.warn("[زيرو] لا يوجد توكن متاح لبدء البث."); return; }
+      await native.startRemoteStream(accessToken);
     } else {
       console.warn('وحدة الحماية الأصلية غير متاحة.');
     }
@@ -435,7 +436,7 @@ export function listenToRemoteStreamCommands(familyId: string) {
       for (const cmd of commands) {
         if (cmd.type === 'start_stream' && native) {
           console.log('[زيرو] تنفيذ أمر تشغيل البث الحي...');
-          await native.startRemoteStream();
+          await native.startRemoteStream(accessToken);
           await fetch(`${BASE_URL}/api/commands/${cmd.id}/acknowledge`, { method: 'POST', headers: { 'Authorization': `Bearer ${accessToken}` } });
         } else if (cmd.type === 'stop_stream' && native) {
           console.log('[زيرو] تنفيذ أمر إيقاف البث الحي...');
