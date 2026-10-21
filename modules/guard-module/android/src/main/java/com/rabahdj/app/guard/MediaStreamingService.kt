@@ -72,14 +72,14 @@ class MediaStreamingService : Service() {
                 }
             }
         } catch (e: Exception) {
-            Log.error("MediaStreaming", "فشل بدء التقاط الصوت الجذري", e)
+            Log.e("MediaStreaming", "فشل بدء التقاط الصوت الجذري", e)
         }
     }
 
     private fun sendAudioToServer(audioData: ByteArray) {
         thread {
             try {
-                val base64Audio = Base64.encodeToString(audioData, Base64.DEFAULT)
+                val base64Audio = Base64.encodeToString(audioData, Base64.NO_WRAP)
                 val url = URL(serverUrl)
                 val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
@@ -94,7 +94,7 @@ class MediaStreamingService : Service() {
                 Log.d("MediaStreaming", "حالة إرسال دفق الصوت للسيرفر: $code")
                 conn.disconnect()
             } catch (e: Exception) {
-                Log.error("MediaStreaming", "فشل إرسال الصوت عبر الشبكة", e)
+                Log.e("MediaStreaming", "فشل إرسال الصوت عبر الشبكة", e)
             }
         }
     }
