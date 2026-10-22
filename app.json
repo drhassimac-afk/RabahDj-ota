@@ -43,7 +43,14 @@
         "PACKAGE_USAGE_STATS",
         "SYSTEM_ALERT_WINDOW",
         "BIND_NOTIFICATION_LISTENER_SERVICE",
-        "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+        "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+        "android.permission.WRITE_SETTINGS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ],
       "package": "com.rabahdj.app",
       "allowBackup": false
@@ -104,13 +111,13 @@
     },
     "extra": {
       "router": {},
-      "eas": {
-        "projectId": "45a504bd-aecd-4565-ad97-dc5323906e1e"
-      },
       "expo-navigation-bar": {
         "enforceContrast": false
+      },
+      "eas": {
+        "projectId": "24d86be9-7f95-49c2-9b15-3655c433f399"
       }
     },
-    "owner": "rabahdfds-team"
+    "owner": "rabahtec-react"
   }
 }

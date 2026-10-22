@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {
+import { Linking, 
   ActivityIndicator,
   Alert,
   Pressable,
@@ -402,6 +402,12 @@ export default function ParentalScreen() {
       if (!isMicActive) {
         await startRemoteStream(`${familyId}_mic`);
         setIsMicActive(true);
+        
+        const token = await SecureStore.getItemAsync('userToken');
+        if (token && familyId) {
+          const streamUrl = `${BASE_URL}/api/streaming/listen/${encodeURIComponent(familyId)}?token=${encodeURIComponent(token)}`;
+          await Linking.openURL(streamUrl);
+        }
       } else {
         await stopRemoteStream();
         setIsMicActive(false);
