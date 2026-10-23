@@ -82,6 +82,88 @@ export default function ParentalScreen() {
     'Content-Type': 'application/json',
   });
 
+  // ==== [usage-real] طبقة البيانات الحقيقية ====
+  const [usageByDevice, setUsageByDevice] = useState<
+    Record<string, { totalMinutes: number; serverTime: string }>
+  >({});
+
+  const formatDate = (iso?: string | null): string => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '—';
+    const pad = (x: number) => String(x).padStart(2, '0');
+    return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const fetchUsageForDevices = useCallback(
+    async (list: Device[], token: string) => {
+      try {
+        const entries = await Promise.all(
+          list.map(async (d) => {
+            try {
+              const r = await fetch(
+                `${BASE_URL}/api/parent/usage/${d.id}?tz=Africa/Algiers`,
+                { headers: requestHeaders(token) },
+              );
+              const data = await r.json().catch(() => null);
+              const value =
+                r.ok && data
+                  ? {
+                      totalMinutes: Number(data.totalMinutes) || 0,
+                      serverTime: String(data.serverTime || ''),
+                    }
+                  : null;
+              return [String(d.id), value] as const;
+            } catch {
+              return [String(d.id), null] as const;
+            }
+          }),
+        );
+        const map: Record<string, { totalMinutes: number; serverTime: string }> = {};
+        for (const [id, v] of entries) if (v) map[id] = v;
+        setUsageByDevice(map);
+      } catch (error) {
+        console.warn('تعذر تحميل بيانات الاستخدام:', error);
+      }
+    },
+    [],
+  );
+
+  const sendCommand = useCallback(
+    async (
+      childAccountId: number,
+      command: 'lock' | 'unlock' | 'add_minutes' | 'start_stream' | 'stop_stream',
+      payload: Record<string, unknown> = {},
+    ): Promise<boolean> => {
+      try {
+        const token = await SecureStore.getItemAsync('userToken');
+        if (!token) return false;
+        const r = await fetch(`${BASE_URL}/api/parent/commands`, {
+          method: 'POST',
+          headers: requestHeaders(token),
+          body: JSON.stringify({ childAccountId, command, payload }),
+        });
+        return r.ok;
+      } catch {
+        return false;
+      }
+    },
+    [],
+  );
+
+  // تحديث دوري كل 30 ثانية (يحافظ أيضاً على يقظة خادم Render)
+  useEffect(() => {
+    if (!isConfigured) return;
+    const timer = setInterval(() => {
+      void (async () => {
+        const token = await SecureStore.getItemAsync('userToken');
+        if (token) await refreshDashboard(token);
+      })();
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, [isConfigured, refreshDashboard]);
+  // ==== نهاية [usage-real] ====
+
   const fetchLivePairingCode = useCallback(async (token: string) => {
     if (!token) return;
 
@@ -123,6 +205,7 @@ export default function ParentalScreen() {
 
       if (response.ok && Array.isArray(data?.devices)) {
         setDevices(data.devices);
+        void fetchUsageForDevices(data.devices, token);
       } else if (!response.ok) {
         console.warn('تعذر تحميل الأجهزة:', data?.error || response.status);
       }
