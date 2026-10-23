@@ -595,24 +595,43 @@ export default function ParentalScreen() {
                 لا توجد أجهزة مرتبطة يعرضها الخادم حاليًا. اربط جهاز الطفل باستخدام رمز الاقتران.
               </Text>
             ) : (
-              devices.map((device, index) => (
-                <View key={String(device.id ?? index)} style={styles.deviceRow}>
-                  <Text style={styles.cardText}>
-                    {device.device_name || 'جهاز بدون اسم'}
-                  </Text>
-                  <Text style={styles.mutedText}>
-                    المستخدم: {device.child_username || 'غير محدد'}
-                  </Text>
-                  <Text style={styles.mutedText}>
-                    النظام: {device.platform || 'غير معروف'}
-                  </Text>
-                  {device.last_seen_at ? (
-                    <Text style={styles.mutedText}>
-                      آخر اتصال: {device.last_seen_at}
+                devices.map((device: any, index: number) => (
+                  <View key={String(device.id ?? index)} style={styles.deviceRow}>
+                    <Text style={styles.cardText}>
+                      {device.device_name || 'جهاز بدون اسم'}
                     </Text>
-                  ) : null}
-                </View>
-              ))
+                    <Text style={styles.mutedText}>
+                                                                                                      المستخدم: {device.child_username || 'غير محدد'}
+                    </Text>
+                    <Text style={styles.mutedText}>
+                                                                                                              النظام: {device.platform || 'غير معروف'}
+                    </Text>
+
+                                                                                                             {/* قسم الـ GPS المدمج داخل الواجهة */}
+                    {device.latitude && device.longitude ? (
+                      <View style={{ marginTop: 8, backgroundColor: '#0f172a', padding: 10, borderRadius: 10, borderWidth: 1, borderColor: '#334155' }}>
+                        <Text style={{ color: '#4ade80', fontSize: 13, fontWeight: 'bold' }}>  
+                                                                                                                               📍 موقع GPS الحالي:
+                        </Text>
+                        <Text style={{ color: '#e2e8f0', fontSize: 12, marginTop: 3 }}>
+                                                                                                               خط العرض: {device.latitude}
+                        </Text>
+                        <Text style={{ color: '#e2e8f0', fontSize: 12 }}>
+                                                                                                               خط الطول: {device.longitude}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.mutedText}>📍 موقع GPS: بانتظام إرسال الإحداثيات...</Text>
+                    )}
+
+                    {device.last_seen_at ? (
+                      <Text style={styles.mutedText}>
+                                                                                                               آخر اتصال: {device.last_seen_at}
+                      </Text>
+                    ) : null}
+                  </View>
+                ))
+
             )}
           </View>
 
