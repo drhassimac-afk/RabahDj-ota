@@ -285,12 +285,29 @@ async function readUsage(): Promise<{
   }
 }
 
+async function uploadUsage(): Promise<void> {
+  if (!native) return;
+  try {
+    if (!native.hasUsageAccess()) return;
+    const apps = await native.getTodayUsage();
+    if (!apps.length) return;
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Africa/Algiers';
+    await api('/api/child/usage-report', {
+      method: 'POST',
+      body: JSON.stringify({ timezone, apps }),
+    });
+  } catch (error) {
+    console.warn('تعذر رفع بيانات الاستخدام:', error);
+  }
+}
+
 async function runCheck(): Promise<LockState> {
   const credentials = await getCredentials();
 
   if (!credentials) return INITIAL;
 
   const usage = await readUsage();
+  void uploadUsage();
 
   // نحتفظ بالقراءة المحلية حتى عند تعذر الشبكة،
   // لكن لا نخترع قاعدة جديدة عند فشل الخادم.
