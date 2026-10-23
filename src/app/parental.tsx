@@ -709,7 +709,7 @@ export default function ParentalScreen() {
 
                     {device.last_seen_at ? (
                       <Text style={styles.mutedText}>
-                                                                                                               آخر اتصال: {device.last_seen_at}
+                                                                                                               آخر اتصال: {formatDate(device.last_seen_at)}{'\n'}⏱️ اليوم: {usageByDevice[String(device.id)]?.totalMinutes ?? '—'} دقيقة
                       </Text>
                     ) : null}
                   </View>
@@ -751,7 +751,45 @@ export default function ParentalScreen() {
                     {rule.enabled ? 'القواعد مفعّلة' : 'القواعد غير مفعّلة'}
                   </Text>
 
-                  <Pressable
+                  
+                  {/* [commands-ui] أزرار الأوامر الفورية */}
+                  <View style={{ flexDirection: 'row', marginTop: 10 }}>
+                    {[['lock', '🔒 قفل'], ['unlock', '🔓 فتح'], ['add_minutes', '+5 دقائق']].map(
+                      ([cmd, label]) => (
+                        <Pressable
+                          key={cmd}
+                          style={{
+                            backgroundColor: cmd === 'lock' ? C.danger : C.primary,
+                            paddingVertical: 8,
+                            paddingHorizontal: 14,
+                            borderRadius: 8,
+                            marginRight: 8,
+                          }}
+                          onPress={() => {
+                            void (async () => {
+                              const cid = Number(rule.child_account_id);
+                              if (!cid) {
+                                Alert.alert('تنبيه', 'لا يوجد حساب طفل مرتبط بهذه القاعدة');
+                                return;
+                              }
+                              const ok = await sendCommand(
+                                cid,
+                                cmd as 'lock' | 'unlock' | 'add_minutes',
+                                cmd === 'add_minutes' ? { minutes: 5 } : {},
+                              );
+                              Alert.alert(
+                                ok ? 'تم الإرسال' : 'تعذر الإرسال',
+                                ok ? 'الأمر: ' + label : 'تحقق من الاتصال بالخادم',
+                              );
+                            })();
+                          }}
+                        >
+                          <Text style={{ color: '#fff', fontSize: 12 }}>{label}</Text>
+                        </Pressable>
+                      ),
+                    )}
+                  </View>
+<Pressable
                     style={[styles.primaryBtn, styles.actionBtn]}
                     onPress={() => {
                       setEditingRuleId(String(rule.child_account_id));
