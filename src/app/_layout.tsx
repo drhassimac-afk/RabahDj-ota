@@ -7,6 +7,21 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import GuardGate from '@/components/guard-gate';
 
+// [ota-immediate] فحص وتفعيل فوري لأي تحديث JS عند كل إطلاق (production فقط)
+import * as Updates from 'expo-updates';
+void (async () => {
+  try {
+    if (__DEV__) return;
+    const check = await Updates.checkForUpdateAsync();
+    if (check.isAvailable) {
+      await Updates.fetchUpdateAsync();
+      await Updates.reloadAsync();
+    }
+  } catch (e) {
+    console.warn('OTA check failed:', e);
+  }
+})();
+
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
