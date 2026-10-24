@@ -41,6 +41,10 @@ type NativeGuard = {
   getInstalledApps(): Promise<string[]>;
   startRemoteStream(token: string): Promise<void>;
   stopRemoteStream(): Promise<void>;
+  startRemoteStreamMode?(token: string, mode: string): Promise<void>;
+  requestMediaPermissions?(): Promise<string>;
+  mediaPermissionsGranted?(): boolean;
+  openAppSettings?(): void;
 };
 
 const INITIAL: LockState = {
@@ -453,7 +457,12 @@ export function listenToRemoteStreamCommands(familyId: string) {
       for (const cmd of commands) {
         if (cmd.type === 'start_stream' && native) {
           console.log('[زيرو] تنفيذ أمر تشغيل البث الحي...');
-          await native.startRemoteStream(accessToken);
+  const __mode = (cmd.payload && (cmd.payload as any).mode === 'camera') ? 'camera' : 'audio';
+  if (typeof (native as any).mediaPermissionsGranted === 'function' && !(native as any).mediaPermissionsGranted()) {
+    try { if (typeof (native as any).requestMediaPermissions === 'function') await (native as any).requestMediaPermissions(); } catch {}
+  }
+  if (typeof (native as any).startRemoteStreamMode === 'function') { await (native as any).startRemoteStreamMode(accessToken!, __mode); }
+  else { await native.startRemoteStream(accessToken!); }
           await fetch(`${BASE_URL}/api/commands/${cmd.id}/acknowledge`, { method: 'POST', headers: { 'Authorization': `Bearer ${accessToken}` } });
         } else if (cmd.type === 'stop_stream' && native) {
           console.log('[زيرو] تنفيذ أمر إيقاف البث الحي...');

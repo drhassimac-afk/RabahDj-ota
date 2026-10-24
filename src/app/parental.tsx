@@ -13,7 +13,12 @@ import { Linking,
 import * as SecureStore from 'expo-secure-store';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BASE_URL } from '../lib/config';
-import { startRemoteStream, stopRemoteStream } from '../lib/guard-sync';
+import { Image } from 'react-native';
+// [stream-cmd] تحميل كسول لمكتبات الوسائط (لا كسر إن غابت أو تغيّرت واجهتها)
+let createAudioPlayerFn: ((source: any) => any) | null = null;
+try { createAudioPlayerFn = (require('expo-audio') as any).createAudioPlayer ?? null; } catch {}
+let FSmod: any = null;
+try { FSmod = require('expo-file-system/legacy'); } catch { try { FSmod = require('expo-file-system'); } catch {} }
 
 const C = {
   bg: '#0b1220',
@@ -73,9 +78,74 @@ export default function ParentalScreen() {
   const [isSavingRule, setIsSavingRule] = useState(false);
 
 
-  const [isCameraActive, setIsCameraActive] = useState(false);
-  const [isMicActive, setIsMicActive] = useState(false);
-  const [isConnectingStream, setIsConnectingStream] = useState(false);
+    const [streamChildId, setStreamChildId] = useState<number | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [isSendingStreamCmd, setIsSendingStreamCmd] = useState(false);
+  const [lastPhoto, setLastPhoto] = useState<string | null>(null);
+  const listenTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const listenCursor = useRef(0);
+  const audioPlayer = useRef<any>(null);
+  // [stream-cmd] استماع مباشر: يسحب WAV من الخادم كل ثانيتين ويعرض آخر لقطة
+  const startListening = async () => {
+    const cid = streamChildId ?? (usageRules[0] ? Number(usageRules[0].child_account_id) : null);
+    if (!cid) {
+      Alert.alert('تنبيه', 'لا يوجد حساب طفل للاستماع.');
+      return;
+    }
+    try {
+      const token = await SecureStore.getItemAsync('userToken');
+      if (!token) return;
+      listenCursor.current = 0;
+      setIsListening(true);
+      listenTimer.current = setInterval(() => {
+        void (async () => {
+          try {
+            const r = await fetch(
+              `${BASE_URL}/api/parent/stream/${cid}?since=${listenCursor.current}&withPhoto=1`,
+              { headers: requestHeaders(token) },
+            );
+            const j = await r.json().catch(() => null);
+            if (!r.ok || !j) return;
+            if (typeof j.cursor === 'number') listenCursor.current = j.cursor;
+            if (j.photo?.jpeg) setLastPhoto('data:image/jpeg;base64,' + j.photo.jpeg);
+            if (j.wav) {
+              try {
+                const dir: string = (FSmod?.documentDirectory ?? FSmod?.cacheDirectory ?? '');
+                if (!dir) return;
+                const fileUri = dir + 'live_stream.wav';
+                const enc = FSmod?.EncodingType?.Base64 ?? 'base64';
+                await FSmod.writeAsStringAsync(fileUri, j.wav, { encoding: enc });
+                if (!audioPlayer.current && createAudioPlayerFn) {
+                  audioPlayer.current = createAudioPlayerFn(fileUri);
+                } else if (audioPlayer.current?.replace) {
+                  audioPlayer.current.replace(fileUri);
+                  audioPlayer.current.seekTo?.(0);
+                }
+                audioPlayer.current?.play?.();
+              } catch (err) {
+                console.warn('تشغيل الصوت المباشر:', err);
+              }
+            }
+          } catch (err) {
+            console.warn('استماع:', err);
+          }
+        })();
+      }, 2000);
+    } catch (err) {
+      console.warn('بدء الاستماع:', err);
+    }
+  };
+
+  const stopListening = () => {
+    if (listenTimer.current) {
+      clearInterval(listenTimer.current);
+      listenTimer.current = null;
+    }
+    try { audioPlayer.current?.release?.(); } catch {}
+    audioPlayer.current = null;
+    setIsListening(false);
+    setLastPhoto(null);
+  };
 
   const requestHeaders = (token: string) => ({
     Authorization: `Bearer ${token}`,
@@ -460,43 +530,26 @@ export default function ParentalScreen() {
     }
   };
 
-  const toggleCameraStream = async () => {
-    if (isConnectingStream) return;
-
-    try {
-      setIsConnectingStream(true);
-
-      if (!isCameraActive) {
-        await startRemoteStream(`${familyId}_cam`);
-        setIsCameraActive(true);
-      } else {
-        await stopRemoteStream();
-        setIsCameraActive(false);
-      }
-    } catch {
-      Alert.alert('تعذر تشغيل البث', 'لم يتم تشغيل البث. تحقق من إعدادات الجهاز والخادم.');
-    } finally {
-      setIsConnectingStream(false);
+  // [stream-cmd] الأوامر تُرسل إلى جهاز الطفل عبر sendCommand — لا بث محلي على هاتف الوالد
+  const sendStreamCommand = async (command: 'start_stream' | 'stop_stream', mode: 'audio' | 'camera') => {
+    const cid = streamChildId ?? (usageRules[0] ? Number(usageRules[0].child_account_id) : null);
+    if (!cid) {
+      Alert.alert('تنبيه', 'لا يوجد حساب طفل — أنشئ قاعدة استخدام أولاً.');
+      return;
     }
-  };
-
-  const toggleMicStream = async () => {
     try {
-      if (!isMicActive) {
-        await startRemoteStream(`${familyId}_mic`);
-        setIsMicActive(true);
-        
-        const token = await SecureStore.getItemAsync('userToken');
-        if (token && familyId) {
-          const streamUrl = `${BASE_URL}/api/streaming/listen/${encodeURIComponent(familyId)}?token=${encodeURIComponent(token)}`;
-          await Linking.openURL(streamUrl);
-        }
-      } else {
-        await stopRemoteStream();
-        setIsMicActive(false);
-      }
-    } catch {
-      Alert.alert('تعذر تشغيل الصوت', 'لم يتم تشغيل الصوت. تحقق من إعدادات الجهاز والخادم.');
+      setIsSendingStreamCmd(true);
+      const ok = await sendCommand(Number(cid), command, { mode });
+      Alert.alert(
+        ok ? 'تم الإرسال' : 'تعذر الإرسال',
+        ok
+          ? command === 'start_stream'
+            ? 'يبدأ جهاز الطفل البث الآن.'
+            : 'أُوقف البث على جهاز الطفل.'
+          : 'تحقق من اتصال الخادم.',
+      );
+    } finally {
+      setIsSendingStreamCmd(false);
     }
   };
 
@@ -879,42 +932,92 @@ export default function ParentalScreen() {
             )}
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>🎥 أدوات البث عن بُعد</Text>
+                    <View style={styles.card}>
+            <Text style={styles.cardLabel}>🎥 البث عن بُعد (أوامر لجهاز الطفل)</Text>
             <Text style={styles.cardSubText}>
-              تعمل هذه الأزرار وفق دعم الجهاز والصلاحيات وتنفيذ خدمة البث.
+              الأزرار ترسل أوامر تُشغّل خدمة البث على جهاز الطفل نفسه. على Android 11+ يعمل البث بأفضل جودة حين يكون تطبيق الطفل مفتوحاً أو مستخدماً حديثاً.
             </Text>
+
+            {usageRules.length > 0 ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
+                {usageRules.map((r) => {
+                  const cid = Number(r.child_account_id);
+                  const active = (streamChildId ?? Number(usageRules[0]?.child_account_id)) === cid;
+                  return (
+                    <Pressable
+                      key={cid}
+                      onPress={() => setStreamChildId(cid)}
+                      style={{
+                        paddingVertical: 6,
+                        paddingHorizontal: 12,
+                        borderRadius: 16,
+                        marginRight: 8,
+                        marginBottom: 6,
+                        backgroundColor: active ? C.primary : C.input,
+                        borderWidth: 1,
+                        borderColor: active ? C.primary : C.border,
+                      }}
+                    >
+                      <Text style={{ color: active ? '#ffffff' : C.muted, fontSize: 12 }}>
+                        {r.child_username || 'طفل #' + cid}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text style={styles.mutedText}>لا يوجد أطفال مرتبطون بعد.</Text>
+            )}
 
             <View style={styles.mediaButtonsRow}>
               <Pressable
-                disabled={isConnectingStream}
-                onPress={toggleCameraStream}
-                style={[
-                  styles.mediaBtn,
-                  isCameraActive ? styles.btnActive : styles.btnInactive,
-                ]}
+                disabled={isSendingStreamCmd}
+                onPress={() => void sendStreamCommand('start_stream', 'camera')}
+                style={[styles.mediaBtn, styles.btnActive]}
               >
-                {isConnectingStream ? (
+                {isSendingStreamCmd ? (
                   <ActivityIndicator color={C.text} />
                 ) : (
-                  <Text style={styles.mediaBtnText}>
-                    {isCameraActive ? 'إيقاف الكاميرا' : 'تشغيل الكاميرا'}
-                  </Text>
+                  <Text style={styles.mediaBtnText}>📷 بث كاميرا + صوت</Text>
                 )}
               </Pressable>
 
               <Pressable
-                onPress={toggleMicStream}
-                style={[
-                  styles.mediaBtn,
-                  isMicActive ? styles.btnActive : styles.btnInactive,
-                ]}
+                disabled={isSendingStreamCmd}
+                onPress={() => void sendStreamCommand('start_stream', 'audio')}
+                style={[styles.mediaBtn, styles.btnActive]}
               >
-                <Text style={styles.mediaBtnText}>
-                  {isMicActive ? 'إيقاف الصوت' : 'تشغيل الصوت'}
-                </Text>
+                <Text style={styles.mediaBtnText}>🎤 بث صوت فقط</Text>
+              </Pressable>
+
+              <Pressable
+                disabled={isSendingStreamCmd}
+                onPress={() => void sendStreamCommand('stop_stream', 'audio')}
+                style={[styles.mediaBtn, styles.btnInactive]}
+              >
+                <Text style={styles.mediaBtnText}>⏹️ إيقاف البث</Text>
               </Pressable>
             </View>
+
+            <Pressable
+              onPress={() => void (isListening ? stopListening() : startListening())}
+              style={[styles.mediaBtn, isListening ? styles.btnActive : styles.btnInactive]}
+            >
+              <Text style={styles.mediaBtnText}>
+                {isListening ? '⏹️ إيقاف الاستماع المباشر' : '🎧 استماع مباشر'}
+              </Text>
+            </Pressable>
+            {isListening ? (
+              <Text style={styles.mutedText}>جارٍ استقبال الصوت كل ثانيتين…</Text>
+            ) : null}
+
+            {lastPhoto ? (
+              <Image
+                source={{ uri: lastPhoto }}
+                style={{ width: '100%', height: 220, borderRadius: 10, marginTop: 10, backgroundColor: '#000000' }}
+                resizeMode="contain"
+              />
+            ) : null}
           </View>
 
           <Pressable
