@@ -50,6 +50,7 @@ type UsageRule = {
   child_account_id?: number;
   child_username?: string;
   daily_limit_minutes?: number;
+  blocked_apps?: string[];
   bedtime_start?: string | null;
   bedtime_end?: string | null;
   enabled?: boolean;
@@ -80,6 +81,8 @@ export default function ParentalScreen() {
   const [draftBedtimeEnd, setDraftBedtimeEnd] = useState('');
   const [draftTimezone, setDraftTimezone] = useState('Africa/Algiers');
   const [draftEnabled, setDraftEnabled] = useState(true);
+  const [draftBlockedApps, setDraftBlockedApps] = useState<string[]>([]);
+  const [childAppsOptions, setChildAppsOptions] = useState<string[]>([]);
   const [isSavingRule, setIsSavingRule] = useState(false);
 
 
@@ -492,6 +495,20 @@ const refreshDashboard = useCallback(async (token: string) => {
   };
 
   
+  const fetchChildApps = useCallback(async (cid: number | string) => {
+    try {
+      const token = await SecureStore.getItemAsync('userToken');
+      if (!token) return;
+      const r = await fetch(`${BASE_URL}/api/parent/child-apps/${encodeURIComponent(String(cid))}`, { headers: requestHeaders(token) });
+      const d = await r.json().catch(() => null);
+      const list = Array.isArray(d?.apps) ? d.apps : [];
+      setChildAppsOptions(list);
+      if (!list.length) Alert.alert('لا توجد بيانات', 'لم يرفع جهاز الطفل قائمة تطبيقاته بعد. افتح تطبيق الطفل مرة واحدة ثم أعد المحاولة.');
+    } catch {
+      Alert.alert('خطأ', 'تعذر جلب تطبيقات الطفل.');
+    }
+  }, []);
+
   const saveUsageRule = async (rule: UsageRule) => {
     const childId = rule.child_account_id;
     const dailyLimit = Number(draftDailyLimit.trim());
@@ -542,7 +559,19 @@ const refreshDashboard = useCallback(async (token: string) => {
       }
 
       await fetchLiveUsageRules(token);
-      setEditingRuleId(null);
+            // [blockapps-ui] حفظ قائمة الحظر مع القواعد
+      try {
+        const br = await fetch(`${BASE_URL}/api/parent/blocked-apps/${encodeURIComponent(String(childId))}`, {
+          method: 'PUT',
+          headers: requestHeaders(token),
+          body: JSON.stringify({ apps: draftBlockedApps }),
+        });
+        if (!br.ok) {
+          const bd = await br.json().catch(() => null);
+          Alert.alert('تنبيه', 'حُفظت القواعد لكن تعذر حفظ قائمة الحظر: ' + (bd?.error || br.status));
+        }
+      } catch {}
+setEditingRuleId(null);
       Alert.alert('تم الحفظ', 'استلم الخادم قواعد الاستخدام الجديدة.');
     } catch {
       Alert.alert('خطأ في الاتصال', 'تعذر حفظ القواعد. تحقق من اتصال الخادم.');
@@ -833,6 +862,43 @@ const refreshDashboard = useCallback(async (token: string) => {
                     {rule.enabled ? 'القواعد مفعّلة' : 'القواعد غير مفعّلة'}
                   </Text>
 
+                  {/* [blockapps-ui] إدارة قائمة الحظر */}
+                  {editingRuleId === String(rule.child_account_id) ? (
+                    <View style={{ marginTop: 8 }}>
+                      <Text style={styles.mutedText}>
+                        ⛔ التطبيقات المحظورة ({draftBlockedApps.length})
+                      </Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 6 }}>
+                        {draftBlockedApps.map((p) => (
+                          <Pressable
+                            key={p}
+                            onPress={() => setDraftBlockedApps(draftBlockedApps.filter((x) => x !== p))}
+                            style={{ backgroundColor: C.danger, borderRadius: 14, paddingVertical: 4, paddingHorizontal: 10, marginRight: 6, marginBottom: 6 }}
+                          >
+                            <Text style={{ color: '#ffffff', fontSize: 11 }}>✕ {p}</Text>
+                          </Pressable>
+                        ))}
+                        {childAppsOptions
+                          .filter((p) => !draftBlockedApps.includes(p))
+                          .map((p) => (
+                            <Pressable
+                              key={p}
+                              onPress={() => setDraftBlockedApps([...draftBlockedApps, p])}
+                              style={{ backgroundColor: C.input, borderWidth: 1, borderColor: C.border, borderRadius: 14, paddingVertical: 4, paddingHorizontal: 10, marginRight: 6, marginBottom: 6 }}
+                            >
+                              <Text style={{ color: C.muted, fontSize: 11 }}>+ {p}</Text>
+                            </Pressable>
+                          ))}
+                      </View>
+                      <Pressable
+                        onPress={() => void fetchChildApps(rule.child_account_id)}
+                        style={[styles.primaryBtn, { marginTop: 8, paddingVertical: 8 }]}
+                      >
+                        <Text style={styles.primaryBtnText}>📥 جلب تطبيقات الطفل المثبتة</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+
                   
                   {/* [commands-ui] أزرار الأوامر الفورية */}
                   <View style={{ flexDirection: 'row', marginTop: 10 }}>
@@ -877,6 +943,17 @@ const refreshDashboard = useCallback(async (token: string) => {
                       setEditingRuleId(String(rule.child_account_id));
                       setDraftDailyLimit(String(rule.daily_limit_minutes ?? 120));
                       setDraftBedtimeStart(rule.bedtime_start || '');
+                      setDraftBlockedApps(Array.isArray(rule.blocked_apps) ? rule.blocked_apps : []);
+                      setChildAppsOptions([]);
+                      void (async () => {
+                        try {
+                          const t2 = await SecureStore.getItemAsync('userToken');
+                          if (!t2) return;
+                          const r2 = await fetch(`${BASE_URL}/api/parent/blocked-apps/${encodeURIComponent(String(rule.child_account_id))}`, { headers: requestHeaders(t2) });
+                          const d2 = await r2.json().catch(() => null);
+                          if (r2.ok && Array.isArray(d2?.apps)) setDraftBlockedApps(d2.apps);
+                        } catch {}
+                      })();
                       setDraftBedtimeEnd(rule.bedtime_end || '');
                       setDraftTimezone('Africa/Algiers');
                       setDraftEnabled(rule.enabled !== false);
