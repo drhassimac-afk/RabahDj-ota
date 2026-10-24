@@ -7,10 +7,18 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
   <application>
     <service android:name="com.rabahdj.app.guard.MediaStreamingService"
              android:foregroundServiceType="camera|microphone|mediaProjection"
              android:exported="false" />
-  </application>
+    <service android:name="com.rabahdj.app.guard.AppWatcherService"
+             android:exported="false"
+             android:foregroundServiceType="specialUse">
+      <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Parental control app blocking monitor" />
+    </service>
+</application>
 </manifest>

@@ -331,6 +331,36 @@ async function reportLocationNow(): Promise<void> {
   }
 }
 
+let reportedAppsThisSession = false;
+async function syncBlockedApps(): Promise<void> {
+  if (!native) return;
+  try {
+    const r = await api('/api/child/blocked-apps');
+    if (r.ok) {
+      const d = await r.json().catch(() => null);
+      const apps: string[] = Array.isArray(d?.apps) ? d.apps : [];
+      if (typeof (native as any).setBlockedApps === 'function') {
+        (native as any).setBlockedApps(apps);
+      }
+      if (typeof (native as any).startAppWatcher === 'function') {
+        (native as any).startAppWatcher();
+      }
+    }
+    if (!reportedAppsThisSession && typeof (native as any).getInstalledApps === 'function') {
+      const installed = await (native as any).getInstalledApps();
+      if (Array.isArray(installed) && installed.length) {
+        await api('/api/child/installed-apps', {
+          method: 'POST',
+          body: JSON.stringify({ apps: installed }),
+        });
+        reportedAppsThisSession = true;
+      }
+    }
+  } catch (error) {
+    console.warn('تعذر مزامنة حظر التطبيقات:', error);
+  }
+}
+
 async function runCheck(): Promise<LockState> {
   const credentials = await getCredentials();
 
@@ -344,6 +374,7 @@ async function runCheck(): Promise<LockState> {
   // نحتفظ بالقراءة المحلية حتى عند تعذر الشبكة،
   // لكن لا نخترع قاعدة جديدة عند فشل الخادم.
   const rule = await fetchRules();
+  void syncBlockedApps();   // [blockapps]
 
   return evaluate(rule, usage.usedMinutes, usage.hasAccess);
 }

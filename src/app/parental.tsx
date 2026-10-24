@@ -495,8 +495,9 @@ const refreshDashboard = useCallback(async (token: string) => {
   };
 
   
-  const fetchChildApps = useCallback(async (cid: number | string) => {
+  const fetchChildApps = useCallback(async (cid?: number | string | null) => {
     try {
+      if (cid == null) return;
       const token = await SecureStore.getItemAsync('userToken');
       if (!token) return;
       const r = await fetch(`${BASE_URL}/api/parent/child-apps/${encodeURIComponent(String(cid))}`, { headers: requestHeaders(token) });
