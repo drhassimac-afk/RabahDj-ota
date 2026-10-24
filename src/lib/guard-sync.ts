@@ -319,7 +319,7 @@ async function reportLocationNow(): Promise<void> {
     )
       return;
     await api('/api/child/location', {
-      method: 'POST',
+      method: 'PUT',
       body: JSON.stringify({
         latitude: pos.coords.latitude,
         longitude: pos.coords.longitude,
