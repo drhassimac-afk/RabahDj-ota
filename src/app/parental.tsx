@@ -12,6 +12,7 @@ import { Linking,
 } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import ChildMap from '../components/child-map';
 import { BASE_URL } from '../lib/config';
 import { Image } from 'react-native';
 // [stream-cmd] تحميل كسول لمكتبات الوسائط (لا كسر إن غابت أو تغيّرت واجهتها)
@@ -68,6 +69,7 @@ export default function ParentalScreen() {
   const [isFetchingCode, setIsFetchingCode] = useState(false);
 
   const [devices, setDevices] = useState<Device[]>([]);
+  const [savedPlaces, setSavedPlaces] = useState<any[]>([]);
   const [isFetchingDevices, setIsFetchingDevices] = useState(false);
 
   const [usageRules, setUsageRules] = useState<UsageRule[]>([]);
@@ -310,13 +312,27 @@ export default function ParentalScreen() {
     }
   }, []);
 
-  const refreshDashboard = useCallback(async (token: string) => {
+    const fetchLivePlaces = useCallback(async (token: string) => {
+    try {
+      const response = await fetch(BASE_URL + '/api/parent/places', {
+        headers: requestHeaders(token),
+      });
+      const data = await response.json().catch(() => null);
+      const list = Array.isArray(data) ? data : (data?.places || []);
+      if (response.ok) setSavedPlaces(list);
+    } catch (error) {
+      console.warn('خطأ تحميل الأماكن المحفوظة:', error);
+    }
+  }, []);
+
+const refreshDashboard = useCallback(async (token: string) => {
     await Promise.all([
       fetchLivePairingCode(token),
       fetchLiveDevices(token),
       fetchLiveUsageRules(token),
+      fetchLivePlaces(token),
     ]);
-  }, [fetchLivePairingCode, fetchLiveDevices, fetchLiveUsageRules]);
+  }, [fetchLivePairingCode, fetchLiveDevices, fetchLiveUsageRules, fetchLivePlaces]);
 
   useEffect(() => {
     let active = true;
@@ -767,6 +783,14 @@ export default function ParentalScreen() {
                       <Text style={styles.mutedText}>
                                                                                                                آخر اتصال: {formatDate(device.last_seen_at)}{'\n'}⏱️ اليوم: {usageByDevice[String(device.id)]?.totalMinutes ?? '—'} دقيقة
                       </Text>
+                    ) : null}
+{device.last_lat != null && device.last_lng != null ? (
+                      <ChildMap
+                        latitude={device.last_lat}
+                        longitude={device.last_lng}
+                        places={savedPlaces}
+                        height={240}
+                      />
                     ) : null}
                   </View>
                 ))

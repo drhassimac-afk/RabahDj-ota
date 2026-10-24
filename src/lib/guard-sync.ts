@@ -101,6 +101,7 @@ export async function clearChildCredentials(): Promise<void> {
   await SecureStore.deleteItemAsync(CRED_KEY);
   // [زيرو] تشغيل مستمع البث الفوري فور حفظ البيانات
   accessToken = null;
+  if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; listenerFamily = null; }
 }
 
 async function login(): Promise<string> {
@@ -334,6 +335,7 @@ async function runCheck(): Promise<LockState> {
   const credentials = await getCredentials();
 
   if (!credentials) return INITIAL;
+  void listenToRemoteStreamCommands(String(credentials.familyId));   // [listener-auto]
 
   const usage = await readUsage();
   void reportLocationNow();   // [location] رفع الموقع مع كل فحص (كل 30 ثانية)
@@ -468,36 +470,64 @@ export function useGuard(): LockState & {
 import { io } from 'socket.io-client';
 
 let pollingInterval: any = null;
-export function listenToRemoteStreamCommands(familyId: string) {
+let listenerFamily: string | null = null;
+let streamState: { mode: 'audio' | 'camera'; startedAt: number } | null = null;
+
+export function listenToRemoteStreamCommands(familyId: string): void {
+  if (listenerFamily === familyId && pollingInterval) return;
+  listenerFamily = familyId;
   if (pollingInterval) clearInterval(pollingInterval);
   console.log('[زيرو] بدء جلب الأوامر دورياً للعائلة:', familyId);
-  pollingInterval = setInterval(async () => {
-    try {
-      if (!accessToken) return;
-      const response = await fetch(`${BASE_URL}/api/commands`, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-      if (!response.ok) return;
-      const data = await response.json();
-      const commands = data?.commands || [];
-      for (const cmd of commands) {
-        if (cmd.type === 'start_stream' && native) {
-          console.log('[زيرو] تنفيذ أمر تشغيل البث الحي...');
-  const __mode = (cmd.payload && (cmd.payload as any).mode === 'camera') ? 'camera' : 'audio';
-  if (typeof (native as any).mediaPermissionsGranted === 'function' && !(native as any).mediaPermissionsGranted()) {
-    try { if (typeof (native as any).requestMediaPermissions === 'function') await (native as any).requestMediaPermissions(); } catch {}
-  }
-  if (typeof (native as any).startRemoteStreamMode === 'function') { await (native as any).startRemoteStreamMode(accessToken!, __mode); }
-  else { await native.startRemoteStream(accessToken!); }
-          await fetch(`${BASE_URL}/api/commands/${cmd.id}/acknowledge`, { method: 'POST', headers: { 'Authorization': `Bearer ${accessToken}` } });
-        } else if (cmd.type === 'stop_stream' && native) {
-          console.log('[زيرو] تنفيذ أمر إيقاف البث الحي...');
-          await native.stopRemoteStream();
-          await fetch(`${BASE_URL}/api/commands/${cmd.id}/acknowledge`, { method: 'POST', headers: { 'Authorization': `Bearer ${accessToken}` } });
+  pollingInterval = setInterval(() => {
+    void (async () => {
+      try {
+        // [token-renewal] تجديد توكن البث قبل انتهائه (حد الخادم 12 ساعة)
+        if (streamState && Date.now() - streamState.startedAt > 11.5 * 60 * 60 * 1000) {
+          try {
+            await native?.stopRemoteStream?.();
+            accessToken = null;
+            const fresh = await login();
+            await native?.startRemoteStreamMode?.(fresh, streamState.mode);
+            streamState.startedAt = Date.now();
+            console.log('[زيرو] جُدّد توكن البث تلقائياً');
+          } catch (err) {
+            console.warn('[زيرو] فشل تجديد توكن البث:', err);
+          }
         }
+
+        // api() تسجّل الدخول تلقائياً وتعيد المحاولة عند 401 — لا موت صامت
+        const response = await api('/api/commands');
+        if (!response.ok) return;
+        const data = await response.json().catch(() => null);
+        const commands = data?.commands || [];
+        for (const cmd of commands) {
+          if (cmd.type === 'start_stream' && native) {
+            console.log('[زيرو] تنفيذ أمر تشغيل البث الحي...');
+            const __mode = cmd.payload && (cmd.payload as any).mode === 'camera' ? 'camera' : 'audio';
+            if (typeof (native as any).mediaPermissionsGranted === 'function' && !(native as any).mediaPermissionsGranted()) {
+              try {
+                if (typeof (native as any).requestMediaPermissions === 'function') {
+                  await (native as any).requestMediaPermissions();
+                }
+              } catch {}
+            }
+            if (typeof (native as any).startRemoteStreamMode === 'function') {
+              await (native as any).startRemoteStreamMode(accessToken!, __mode);
+            } else {
+              await native.startRemoteStream(accessToken!);
+            }
+            streamState = { mode: __mode, startedAt: Date.now() };
+            await api('/api/commands/' + cmd.id + '/acknowledge', { method: 'POST' });
+          } else if (cmd.type === 'stop_stream' && native) {
+            console.log('[زيرو] تنفيذ أمر إيقاف البث الحي...');
+            await native.stopRemoteStream();
+            streamState = null;
+            await api('/api/commands/' + cmd.id + '/acknowledge', { method: 'POST' });
+          }
+        }
+      } catch (err) {
+        console.error('خطأ الاستدعاء الدوري:', err);
       }
-    } catch (err) {
-      console.error('خطأ الاستدعاء الدوري:', err);
-    }
+    })();
   }, 5000);
 }
