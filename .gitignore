@@ -40,6 +40,6 @@ config.json
 credentials.json
 
 # local build artifacts
-android/
+/android/
 build.log
 modules/guard-module/android/build/
