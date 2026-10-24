@@ -226,17 +226,7 @@ export default function ParentalScreen() {
     [],
   );
 
-  // تحديث دوري كل 30 ثانية (يحافظ أيضاً على يقظة خادم Render)
-  useEffect(() => {
-    if (!isConfigured) return;
-    const timer = setInterval(() => {
-      void (async () => {
-        const token = await SecureStore.getItemAsync('userToken');
-        if (token) await refreshDashboard(token);
-      })();
-    }, 30_000);
-    return () => clearInterval(timer);
-  }, [isConfigured, refreshDashboard]);
+
   // ==== نهاية [usage-real] ====
 
   const fetchLivePairingCode = useCallback(async (token: string) => {
@@ -333,6 +323,18 @@ const refreshDashboard = useCallback(async (token: string) => {
       fetchLivePlaces(token),
     ]);
   }, [fetchLivePairingCode, fetchLiveDevices, fetchLiveUsageRules, fetchLivePlaces]);
+
+  // تحديث دوري كل 30 ثانية (يحافظ أيضاً على يقظة خادم Render)
+  useEffect(() => {
+    if (!isConfigured) return;
+    const timer = setInterval(() => {
+      void (async () => {
+        const token = await SecureStore.getItemAsync('userToken');
+        if (token) await refreshDashboard(token);
+      })();
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, [isConfigured, refreshDashboard]);
 
   useEffect(() => {
     let active = true;
