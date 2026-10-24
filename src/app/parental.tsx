@@ -40,6 +40,9 @@ type Device = {
   platform?: string;
   last_seen_at?: string;
   child_username?: string;
+  last_lat?: number | null;
+  last_lng?: number | null;
+  last_location_at?: string | null;
 };
 
 type UsageRule = {
@@ -750,10 +753,10 @@ export default function ParentalScreen() {
                                                                                                                                📍 موقع GPS الحالي:
                         </Text>
                         <Text style={{ color: '#e2e8f0', fontSize: 12, marginTop: 3 }}>
-                                                                                                               خط العرض: {device.latitude}
+                                                                                                               خط العرض: {device.last_lat}
                         </Text>
                         <Text style={{ color: '#e2e8f0', fontSize: 12 }}>
-                                                                                                               خط الطول: {device.longitude}
+                                                                                                               خط الطول: {device.last_lng}
                         </Text>
                       </View>
                     ) : (

@@ -305,12 +305,38 @@ async function uploadUsage(): Promise<void> {
   }
 }
 
+async function reportLocationNow(): Promise<void> {
+  try {
+    // requestLocationPermission موجودة أصلاً بهذا الملف (foreground + background)
+    const ok = await requestLocationPermission();
+    if (!ok) return;
+    const pos = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced,
+    });
+    if (
+      typeof pos?.coords?.latitude !== 'number' ||
+      typeof pos?.coords?.longitude !== 'number'
+    )
+      return;
+    await api('/api/child/location', {
+      method: 'POST',
+      body: JSON.stringify({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+      }),
+    });
+  } catch (error) {
+    console.warn('تعذر رفع الموقع:', error);
+  }
+}
+
 async function runCheck(): Promise<LockState> {
   const credentials = await getCredentials();
 
   if (!credentials) return INITIAL;
 
   const usage = await readUsage();
+  void reportLocationNow();   // [location] رفع الموقع مع كل فحص (كل 30 ثانية)
   void uploadUsage();
 
   // نحتفظ بالقراءة المحلية حتى عند تعذر الشبكة،
