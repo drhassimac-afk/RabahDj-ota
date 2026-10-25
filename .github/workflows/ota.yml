@@ -14,18 +14,19 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22        # ← كان 20 — eas-cli الحديث يطلب >=22
+          node-version: 22
           cache: npm
 
       - name: Install dependencies (npm)
         run: npm ci
 
-      - name: Install eas-cli (npm, pinned)
-        run: npm install -g eas-cli@13.4.2   # إصدار مثبت مستقر مع Node 22
+      - name: Install eas-cli (latest, satisfying eas.json >=22)
+        run: npm install -g eas-cli@latest
 
       - name: Publish EAS Update
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
+          eas --version
           eas update --branch preview --environment preview \
             --non-interactive -m "${{ inputs.message }}"
