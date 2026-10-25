@@ -14,14 +14,14 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22        # ← كان 20 — eas-cli الحديث يطلب >=22
           cache: npm
 
       - name: Install dependencies (npm)
         run: npm ci
 
       - name: Install eas-cli (npm, pinned)
-        run: npm install -g eas-cli@13.4.2
+        run: npm install -g eas-cli@13.4.2   # إصدار مثبت مستقر مع Node 22
 
       - name: Publish EAS Update
         env:
