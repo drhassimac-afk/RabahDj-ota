@@ -11,13 +11,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
-      - uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
-      - run: eas update --branch preview --environment preview --non-interactive -m "${{ inputs.message }}"
+
+      - name: Install dependencies (npm)
+        run: npm ci
+
+      - name: Install eas-cli (npm, pinned)
+        run: npm install -g eas-cli@13.4.2
+
+      - name: Publish EAS Update
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          eas update --branch preview --environment preview \
+            --non-interactive -m "${{ inputs.message }}"
