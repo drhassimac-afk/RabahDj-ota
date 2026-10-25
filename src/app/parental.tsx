@@ -83,6 +83,7 @@ export default function ParentalScreen() {
   const [draftEnabled, setDraftEnabled] = useState(true);
   const [draftBlockedApps, setDraftBlockedApps] = useState<string[]>([]);
   const [childAppsOptions, setChildAppsOptions] = useState<string[]>([]);
+  const [draftNewPackage, setDraftNewPackage] = useState('');
   const [isSavingRule, setIsSavingRule] = useState(false);
 
 
@@ -891,7 +892,29 @@ setEditingRuleId(null);
                             </Pressable>
                           ))}
                       </View>
-                      <Pressable
+                                            {/* [blockapps-ui] إضافة حزمة يدوياً */}
+                      <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                        <TextInput
+                          value={draftNewPackage}
+                          onChangeText={setDraftNewPackage}
+                          placeholder="اسم الحزمة يدوياً: com.android.chrome"
+                          placeholderTextColor={C.muted}
+                          autoCapitalize="none"
+                          style={{ flex: 1, backgroundColor: C.input, borderColor: C.border, borderWidth: 1, borderRadius: 8, color: C.text, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12 }}
+                        />
+                        <Pressable
+                          onPress={() => {
+                            const p = draftNewPackage.trim();
+                            if (!p) return;
+                            if (!draftBlockedApps.includes(p)) setDraftBlockedApps([...draftBlockedApps, p]);
+                            setDraftNewPackage('');
+                          }}
+                          style={{ marginLeft: 8, backgroundColor: C.danger, borderRadius: 8, paddingHorizontal: 14, justifyContent: 'center' }}
+                        >
+                          <Text style={{ color: '#ffffff', fontSize: 12 }}>+ حظر</Text>
+                        </Pressable>
+                      </View>
+<Pressable
                         onPress={() => void fetchChildApps(rule.child_account_id)}
                         style={[styles.primaryBtn, { marginTop: 8, paddingVertical: 8 }]}
                       >
