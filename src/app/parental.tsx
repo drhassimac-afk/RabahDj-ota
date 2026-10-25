@@ -17,9 +17,19 @@ import { BASE_URL } from '../lib/config';
 import { Image } from 'react-native';
 // [stream-cmd] تحميل كسول لمكتبات الوسائط (لا كسر إن غابت أو تغيّرت واجهتها)
 let createAudioPlayerFn: ((source: any) => any) | null = null;
-try { createAudioPlayerFn = (require('expo-audio') as any).createAudioPlayer ?? null; } catch {}
+let diagAudio = '';   // [stream-diag]
+try {
+  const m = require('expo-audio');
+  createAudioPlayerFn = m.createAudioPlayer ?? null;
+  diagAudio = m.createAudioPlayer ? 'ok' : 'createAudioPlayer غير موجود في expo-audio';
+} catch (e: any) { diagAudio = 'فشل استيراد expo-audio: ' + String((e as any)?.message ?? String(e)); }
 let FSmod: any = null;
-try { FSmod = require('expo-file-system/legacy'); } catch { try { FSmod = require('expo-file-system'); } catch {} }
+let diagFS = '';     // [stream-diag]
+try {
+  try { FSmod = require('expo-file-system/legacy'); diagFS = 'legacy'; }
+  catch { FSmod = require('expo-file-system'); diagFS = 'main'; }
+  if (!FSmod?.writeAsStringAsync) diagFS += ' (تنبيه: writeAsStringAsync غير متاح!)';
+} catch (e: any) { diagFS = 'فشل استيراد expo-file-system: ' + String((e as any)?.message ?? String(e)); }
 
 const C = {
   bg: '#0b1220',
@@ -91,6 +101,7 @@ export default function ParentalScreen() {
   const [isListening, setIsListening] = useState(false);
   const [isSendingStreamCmd, setIsSendingStreamCmd] = useState(false);
   const [lastPhoto, setLastPhoto] = useState<string | null>(null);
+  const [diagMsg, setDiagMsg] = useState<string | null>(null);
   const listenTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const listenCursor = useRef(0);
   const audioPlayer = useRef<any>(null);
@@ -105,6 +116,7 @@ export default function ParentalScreen() {
       const token = await SecureStore.getItemAsync('userToken');
       if (!token) return;
       listenCursor.current = 0;
+        setDiagMsg(`🧪 audio:${diagAudio || '?'} | fs:${diagFS || '?'} | ${FSmod?.documentDirectory ? 'docDir✔' : 'docDir✖'}`);
       setIsListening(true);
       listenTimer.current = setInterval(() => {
         void (async () => {
@@ -118,6 +130,7 @@ export default function ParentalScreen() {
             if (typeof j.cursor === 'number') listenCursor.current = j.cursor;
             if (j.photo?.jpeg) setLastPhoto('data:image/jpeg;base64,' + j.photo.jpeg);
             if (j.wav) {
+              setDiagMsg(`📥 وصل WAV: ${j.wav.length} حرفاً — جارٍ الكتابة والتشغيل`);
               try {
                 const dir: string = (FSmod?.documentDirectory ?? FSmod?.cacheDirectory ?? '');
                 if (!dir) return;
@@ -131,8 +144,10 @@ export default function ParentalScreen() {
                   audioPlayer.current.seekTo?.(0);
                 }
                 audioPlayer.current?.play?.();
+                setDiagMsg((m) => (m ? m + ' → ▶️ أُمر التشغيل' : '▶️ أُمر التشغيل'));
               } catch (err) {
                 console.warn('تشغيل الصوت المباشر:', err);
+                setDiagMsg('❌ خطأ تشغيل: ' + String((err as any)?.message ?? String(err)));
               }
             }
           } catch (err) {
@@ -1141,6 +1156,11 @@ setEditingRuleId(null);
               <Text style={styles.mutedText}>جارٍ استقبال الصوت كل ثانيتين…</Text>
             ) : null}
 
+            {isListening && diagMsg ? (
+              <Text style={{ color: C.link, fontSize: 11, marginTop: 6 }} selectable>
+                {diagMsg}
+              </Text>
+            ) : null}
             {lastPhoto ? (
               <Image
                 source={{ uri: lastPhoto }}
