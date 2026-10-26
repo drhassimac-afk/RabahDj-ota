@@ -21,6 +21,9 @@ import android.view.Gravity
 import android.view.WindowManager
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
+import java.net.HttpURLConnection
+import java.net.URL
+import org.json.JSONObject
 
 class AppWatcherService : Service() {
 
