@@ -154,7 +154,26 @@ class AppWatcherService : Service() {
     return last
   }
 
+  private fun forcedLockActive(): Boolean =
+    prefs.getString("forced_lock", "false") == "true"
+
+  private fun showLockOverlay() {
+    // الغطاء نفسه (عناصر مُعاد استخدامها من showOverlay لكن برسالة القفل)
+    if (overlayView != null) {
+      overlayView?.text = "🔒 الجهاز مقفل بواسطة ولي الأمر"
+      return
+    }
+    showOverlay()
+    overlayView?.text = "🔒 الجهاز مقفل بواسطة ولي الأمر"
+  }
   private fun checkOnce() {
+    if (forcedLockActive()) {
+      showLockOverlay()
+      val now2 = System.currentTimeMillis()
+      if (now2 - lastLaunchAt > 5000) { lastLaunchAt = now2; launchOurApp() }
+      return
+    }
+    hideOverlay()
     val blocked = blockedApps()
     val fg = foregroundPackage()
     if (fg != null && blocked.contains(fg) && fg != packageName) {
