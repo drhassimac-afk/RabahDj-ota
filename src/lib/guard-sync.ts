@@ -45,6 +45,7 @@ type NativeGuard = {
   requestMediaPermissions?(): Promise<string>;
   mediaPermissionsGranted?(): boolean;
   openAppSettings?(): void;
+  setChildToken?(token: string): void;
 };
 
 const INITIAL: LockState = {
@@ -366,6 +367,15 @@ async function runCheck(): Promise<LockState> {
 
   if (!credentials) return INITIAL;
   void listenToRemoteStreamCommands(String(credentials.familyId));   // [listener-auto]
+  // [child-token] تمرير التوكن الحي للخدمة الأمامية (تستطلع الأوامر حتى الشاشة مقفلة)
+  void (async () => {
+    try {
+      if (native && typeof (native as any).setChildToken === 'function') {
+        const tk = await login();
+        (native as any).setChildToken(tk);
+      }
+    } catch {}
+  })();
 
   const usage = await readUsage();
   void reportLocationNow();   // [location] رفع الموقع مع كل فحص (كل 30 ثانية)
