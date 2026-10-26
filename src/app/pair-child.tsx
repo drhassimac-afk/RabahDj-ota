@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Alert, SafeAreaView, ScrollView,
+  ActivityIndicator, Alert, AppState, SafeAreaView, ScrollView, View,
   StyleSheet, Text, TextInput, TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { requestLocationPermission, saveChildCredentials } from '@/lib/guard-sync';
+import { requestLocationPermission, saveChildCredentials, readPermissionsStatus, openPermission, PermStatus } from '@/lib/guard-sync';
 
 const API = 'https://rabahdj-parental-backend.onrender.com';
 
@@ -15,7 +15,22 @@ export default function PairChildScreen() {
   const [password, setPassword] = useState('');
   const [deviceName, setDeviceName] = useState('هاتف الطفل');
   const [busy, setBusy] = useState(false);
+  const [pairedOK, setPairedOK] = useState(false);
+  const [perms, setPerms] = useState<PermStatus | null>(null);
   const [error, setError] = useState('');
+
+  const refreshPerms = useCallback(async () => {
+    setPerms(await readPermissionsStatus());
+  }, []);
+
+  useEffect(() => {
+    if (!pairedOK) return;
+    void refreshPerms();
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st === 'active') void refreshPerms();
+    });
+    return () => sub.remove();
+  }, [pairedOK, refreshPerms]);
 
   const pair = async () => {
     setError('');
@@ -67,7 +82,8 @@ export default function PairChildScreen() {
           ? 'تم ربط هذا الجهاز بحساب العائلة.'
           : 'تم ربط الجهاز، لكن بدون إذن الموقع لن يعمل تنبيه المناطق. يمكنك تفعيله لاحقًا من إعدادات النظام.',
       );
-      router.back();
+      // [perm-card] أعرض بطاقة الأذونات بدل العودة الفورية
+      setPairedOK(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر الربط.');
     } finally {
@@ -100,19 +116,63 @@ export default function PairChildScreen() {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <TouchableOpacity style={styles.button} onPress={pair} disabled={busy}>
-          {busy ? <ActivityIndicator color="#fff" />
-            : <Text style={styles.buttonText}>ربط الجهاز</Text>}
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.link}>رجوع</Text>
-        </TouchableOpacity>
+        {pairedOK ? (
+          <View style={styles.permCard}>
+            <Text style={styles.permTitle}>✅ تم الربط — أكمل الأذونات الثلاثة</Text>
+
+            {([
+              ['overlay', '🎥 الرسم فوق التطبيقات', 'لإظهار حاجب التطبيقات المحظورة'],
+              ['usage', '📊 الوصول لبيانات الاستخدام', 'لحساب الحد اليومي وحظر التطبيقات'],
+              ['app', '📍 الموقع (اختر: السماح طوال الوقت)', 'لتتبع الموقع وتنبيهات المناطق'],
+            ] as [string, string, string][]).map(([key, label, why]) => {
+              const granted =
+                key === 'overlay' ? !!perms?.overlay :
+                key === 'usage' ? !!perms?.usage :
+                !!perms?.bgLocation;
+              return (
+                <View key={key} style={styles.permRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>
+                      {granted ? '✔ ' : '✖ '}{label}
+                    </Text>
+                    <Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>{why}</Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => openPermission(key as 'overlay' | 'usage' | 'app')}
+                    style={[styles.permBtn, granted && { backgroundColor: '#14532d' }]}
+                  >
+                    <Text style={styles.permBtnText}>{granted ? 'ممنوح' : 'منح الآن'}</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+
+            <TouchableOpacity style={styles.button} onPress={() => router.back()}>
+              <Text style={styles.buttonText}>متابعة</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            <TouchableOpacity style={styles.button} onPress={pair} disabled={busy}>
+              {busy ? <ActivityIndicator color="#fff" />
+                : <Text style={styles.buttonText}>ربط الجهاز</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.back()}>
+              <Text style={styles.link}>رجوع</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  permCard: { backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#1e3a8a', borderRadius: 14, padding: 14, marginTop: 18 },
+  permTitle: { color: '#fff', fontWeight: '800', fontSize: 14, marginBottom: 10, textAlign: 'center' },
+  permRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#1e293b' },
+  permBtn: { backgroundColor: '#2563eb', borderRadius: 9, paddingHorizontal: 12, paddingVertical: 8, marginLeft: 8 },
+  permBtnText: { color: '#fff', fontWeight: '800', fontSize: 12 },
   safe: { flex: 1, backgroundColor: '#0b1220' },
   content: { padding: 24, paddingBottom: 40 },
   title: { color: '#fff', fontSize: 23, fontWeight: '800', textAlign: 'center', marginVertical: 16 },
