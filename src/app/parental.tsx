@@ -118,6 +118,11 @@ export default function ParentalScreen() {
       listenCursor.current = 0;
         setDiagMsg(`🧪 audio:${diagAudio || '?'} | fs:${diagFS || '?'} | ${FSmod?.documentDirectory ? 'docDir✔' : 'docDir✖'}`);
       setIsListening(true);
+        try {
+          const gm = require('../../modules/guard-module/src/GuardModule').default;
+          const info = gm?.micDiag?.();
+          if (info) setDiagMsg((m) => (m ? m + ' | 🎙️ ' + info : '🎙️ ' + info));
+        } catch {}
       listenTimer.current = setInterval(() => {
         void (async () => {
           try {
