@@ -45,7 +45,7 @@ class GuardModule : Module() {
     }
 
     Function("micDiag") {
-      val ctx = appContext.reactContext ?: return "no-context"
+      val ctx = appContext.reactContext ?: return@Function "no-context"
       val granted = ctx.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
       val recState = if (granted) {
         try {
