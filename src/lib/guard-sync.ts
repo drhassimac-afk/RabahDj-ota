@@ -45,6 +45,8 @@ type NativeGuard = {
   requestMediaPermissions?(): Promise<string>;
   mediaPermissionsGranted?(): boolean;
   openAppSettings?(): void;
+  hasOverlayPermission?(): boolean;
+  openOverlaySettings?(): void;
   setChildToken?(token: string): void;
 };
 
@@ -454,6 +456,31 @@ export async function stopRemoteStream(): Promise<void> {
   }
 
   await native.stopRemoteStream();
+}
+
+
+// [perm-exports] مساعدات أذونات موحدة للشاشات
+export type PermStatus = { overlay: boolean; usage: boolean; bgLocation: boolean };
+export async function readPermissionsStatus(): Promise<PermStatus> {
+  let overlay = false, usage = false, bgLocation = false;
+  try {
+    if (native?.hasOverlayPermission) overlay = native.hasOverlayPermission();
+    if (native?.hasUsageAccess) usage = native.hasUsageAccess();
+  } catch {}
+  try {
+    const Location = require('expo-location');
+    const bg = await Location.getBackgroundPermissionsAsync?.();
+    bgLocation = !!bg?.granted;
+  } catch {}
+  return { overlay, usage, bgLocation };
+}
+export function openPermission(setting: 'overlay' | 'usage' | 'app'): void {
+  try {
+    if (!native) return;
+    if (setting === 'overlay' && native.openOverlaySettings) return native.openOverlaySettings();
+    if (setting === 'usage') return native.openUsageSettings();
+    native.openAppSettings?.();
+  } catch {}
 }
 
 export function useGuard(): LockState & {

@@ -29,6 +29,12 @@ try {
   try { FSmod = require('expo-file-system/legacy'); diagFS = 'legacy'; }
   catch { FSmod = require('expo-file-system'); diagFS = 'main'; }
   if (!FSmod?.writeAsStringAsync) diagFS += ' (تنبيه: writeAsStringAsync غير متاح!)';
+  // [fs-probe] الواجهة الحقيقية تُعرض في الشريط:
+  diagFS += ' | ' + JSON.stringify({
+    write: typeof FSmod?.writeAsStringAsync,
+    EncodingType: typeof FSmod?.EncodingType,
+    Base64Val: FSmod?.EncodingType?.Base64 != null ? String(FSmod.EncodingType.Base64) : 'undef',
+  });
 } catch (e: any) { diagFS = 'فشل استيراد expo-file-system: ' + String((e as any)?.message ?? String(e)); }
 
 const C = {
@@ -140,7 +146,9 @@ export default function ParentalScreen() {
                 const dir: string = (FSmod?.documentDirectory ?? FSmod?.cacheDirectory ?? '');
                 if (!dir) return;
                 const fileUri = dir + 'live_' + Date.now() + '.wav';   // [player-v3]
-                const enc = FSmod?.EncodingType?.Base64 ?? 'base64';
+                const enc = (FSmod?.EncodingType?.Base64 != null)
+                  ? FSmod.EncodingType.Base64
+                  : 'base64';   // [fs-probe] safe fallback
                 await FSmod.writeAsStringAsync(fileUri, j.wav, { encoding: enc });
                 // أسماء صحيحة (remove/volume) + تشخيص حالة التشغيل الفعلية
                 if (createAudioPlayerFn) {
