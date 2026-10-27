@@ -98,12 +98,16 @@ class MediaStreamingService : Service() {
       audioRecord?.startRecording()
       thread(start = true) {
         val buf = ByteArray(READ_BYTES)
-        while (isStreaming) {
-          val n = audioRecord?.read(buf, 0, buf.size) ?: -1   // حاجب حتى تمتلئ 300ms
-          if (n > 0) {
-            audioQueue.add(buf.copyOf(n))
-            while (audioQueue.size > QUEUE_MAX) audioQueue.poll()   // drop-oldest
+        try {
+          while (isStreaming) {
+            val n = audioRecord?.read(buf, 0, buf.size) ?: break
+            if (n > 0) {
+              audioQueue.add(buf.copyOf(n))
+              while (audioQueue.size > QUEUE_MAX) audioQueue.poll()
+            }
           }
+        } catch (e: Exception) {
+          Log.w("MediaStreaming", "التقاط توقف: ${e.message}")
         }
       }
       // المستهلك: ينطلق مرة واحدة ويسحب من الطابور (ويفضّغ المخزون عند التوقف)
