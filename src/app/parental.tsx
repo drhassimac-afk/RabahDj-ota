@@ -142,14 +142,20 @@ export default function ParentalScreen() {
                 const fileUri = dir + 'live_' + Date.now() + '.wav';   // [player-v3]
                 const enc = FSmod?.EncodingType?.Base64 ?? 'base64';
                 await FSmod.writeAsStringAsync(fileUri, j.wav, { encoding: enc });
-                // [player-v2] مشغّل جديد لكل دفعة — بلا replace ولا مشغّل قديم عالق
+                // أسماء صحيحة (remove/volume) + تشخيص حالة التشغيل الفعلية
                 if (createAudioPlayerFn) {
-                  try { audioPlayer.current?.release?.(); } catch {}
+                  try { audioPlayer.current?.remove?.(); } catch {}
                   try {
-                    audioPlayer.current = createAudioPlayerFn(fileUri);
-                    try { audioPlayer.current?.setVolume?.(1.0); } catch {}
-                    audioPlayer.current?.play?.();
-                    setDiagMsg((m) => (m ? m + ' → ▶️ مشغّل جديد أُطلق' : '▶️ مشغّل جديد أُطلق'));
+                    const p = createAudioPlayerFn(fileUri);
+                    audioPlayer.current = p;
+                    try { p.volume = 1.0; } catch {}
+                    p.play?.();
+                    setDiagMsg((m) => (m ? m + ' → ▶️ أُطلق' : '▶️ أُطلق'));
+                    setTimeout(() => {
+                      try {
+                        setDiagMsg((m) => (m || '') + ` | ⏱ playing=${p.playing} dur=${p.duration ?? '?'} cur=${p.currentTime ?? '?'}`);
+                      } catch {}
+                    }, 600);
                   } catch (e2: any) {
                     setDiagMsg('❌ إنشاء/تشغيل المشغّل فشل: ' + String((e2 as any)?.message ?? e2));
                   }

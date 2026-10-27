@@ -1,29 +1,47 @@
 const fs = require('fs');
 const f = 'src/app/parental.tsx';
 let s = fs.readFileSync(f, 'utf8');
+
 if (s.includes('[player-v3]')) { console.log('مثبت مسبقاً'); process.exit(0); }
 
-const old = "                const fileUri = dir + 'live_stream.wav';";
-if (!s.includes(old)) { console.error('FAIL: fileUri anchor'); process.exit(1); }
-// ملف فريد لكل دفعة — لا سباق كتابة/تشغيل + مستوى صوت صريح:
-const neu = `                const fileUri = dir + 'live_' + Date.now() + '.wav';   // [player-v3] ملف فريد
-`;
-s = s.replace(old, neu);
+const OLD = `                // [player-v2] مشغّل جديد لكل دفعة — بلا replace ولا مشغّل قديم عالق
+                if (createAudioPlayerFn) {
+                  try { audioPlayer.current?.release?.(); } catch {}
+                  try {
+                    audioPlayer.current = createAudioPlayerFn(fileUri);
+                    try { audioPlayer.current?.setVolume?.(1.0); } catch {}
+                    audioPlayer.current?.play?.();
+                    setDiagMsg((m) => (m ? m + ' → ▶️ مشغّل جديد أُطلق' : '▶️ مشغّل جديد أُطلق'));
+                  } catch (e2: any) {
+                    setDiagMsg('❌ إنشاء/تشغيل المشغّل فشل: ' + String((e2 as any)?.message ?? e2));
+                  }
+                } else {
+                  setDiagMsg('❌ createAudioPlayerFn غير متاح رغم diagAudio=ok — حالة غير متوقعة');
+                }`;
 
-// مستوى صوت صريح عند الإنشاء:
-const pA = "                    audioPlayer.current = createAudioPlayerFn(fileUri);";
-if (!s.includes(pA)) { console.error('FAIL: create anchor'); process.exit(1); }
-s = s.replace(pA, pA +
-  "\n                    try { audioPlayer.current?.setVolume?.(1.0); } catch {}");
+if (!s.includes(OLD)) { console.error('FAIL: player-v2 block anchor — أرسل sed -n "140,165p" src/app/parental.tsx'); process.exit(1); }
 
-// تنظيف الملفات القديمة (احتفاظ بآخر 3 فقط):
-const relA = "                    try { audioPlayer.current?.release?.(); } catch {}";
-if (!s.includes(relA)) { console.error('FAIL: release anchor'); process.exit(1); }
-s = s.replace(relA, relA +
-  "\n                    try { FSmod?.readDirectoryAsync?.(dir)?.then?.((files: any[]) => {\n" +
-  "                      const olds = (files||[]).filter((x:any)=>x.name?.startsWith('live_')).slice(0,-3);\n" +
-  "                      olds.forEach((x:any)=>FSmod.deleteAsync?.(dir+x.name,{}));\n" +
-  "                    }); } catch {}");
+const NEW = `                // [player-v3] أسماء صحيحة (remove/volume) + تشخيص حالة التشغيل الفعلية
+                if (createAudioPlayerFn) {
+                  try { audioPlayer.current?.remove?.(); } catch {}
+                  try {
+                    const p = createAudioPlayerFn(fileUri);
+                    audioPlayer.current = p;
+                    try { p.volume = 1.0; } catch {}
+                    p.play?.();
+                    setDiagMsg((m) => (m ? m + ' → ▶️ أُطلق' : '▶️ أُطلق'));
+                    setTimeout(() => {
+                      try {
+                        setDiagMsg((m) => (m || '') + \` | ⏱ playing=\${p.playing} dur=\${p.duration ?? '?'} cur=\${p.currentTime ?? '?'}\`);
+                      } catch {}
+                    }, 600);
+                  } catch (e2: any) {
+                    setDiagMsg('❌ إنشاء/تشغيل المشغّل فشل: ' + String((e2 as any)?.message ?? e2));
+                  }
+                } else {
+                  setDiagMsg('❌ createAudioPlayerFn غير متاح رغم diagAudio=ok — حالة غير متوقعة');
+                }`;
 
+s = s.replace(OLD, NEW);
 fs.writeFileSync(f, s);
-console.log('OK: player-v3 (unique file per chunk + explicit volume + cleanup)');
+console.log('OK: player-v3 installed (correct method names + playback diagnostics)');
