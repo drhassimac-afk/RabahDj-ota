@@ -19,8 +19,10 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 class MediaStreamingService : Service() {
@@ -29,18 +31,19 @@ class MediaStreamingService : Service() {
   @Volatile private var isCamRunning = false
   private var audioRecord: AudioRecord? = null
   private val sampleRate = 16000
-  private val bufferSize = AudioRecord.getMinBufferSize(
-    sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
-  )
+  private val bytesPerSecond = sampleRate * 2   // 16-bit mono
   private val serverUrl = "https://rabahdj-parental-backend.onrender.com"
+
+  // ═══ [v4] منتج/مستهلك: الالتقاط لا يلمس الشبكة أبداً ═══
+  private val audioQueue = ConcurrentLinkedQueue<ByteArray>()
+  private val senderRunning = AtomicBoolean(false)
+  private val QUEUE_MAX = 120        // ≈36 ثانية @300ms/إطار — إسقاط الأقدم بعدها
+  private val READ_BYTES = 9600      // 300ms لكل قراءة حاجبة
 
   @Volatile private var token: String? = null
   @Volatile private var mode: String = "audio"
 
-  override fun onCreate() {
-    super.onCreate()
-    createNotificationChannel()
-  }
+  override fun onCreate() { super.onCreate(); createNotificationChannel() }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     intent?.getStringExtra("TOKEN")?.let { token = it }
@@ -56,8 +59,7 @@ class MediaStreamingService : Service() {
       if (Build.VERSION.SDK_INT >= 29) {
         var t = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         if (mode == "camera" &&
-          checkSelfPermission(android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-        ) {
+          checkSelfPermission(android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
           t = t or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
         }
         startForeground(102, notification, t)
@@ -66,8 +68,7 @@ class MediaStreamingService : Service() {
       }
     } catch (e: Exception) {
       Log.e("MediaStreaming", "startForeground failed: ${e.message}")
-      stopSelf()
-      return START_NOT_STICKY
+      stopSelf(); return START_NOT_STICKY
     }
 
     if (intent?.action == "START_STREAM") {
@@ -81,36 +82,59 @@ class MediaStreamingService : Service() {
   private fun hasMic(): Boolean =
     checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
+  // ═══ 🎙️ المنتج: يقرأ 300ms ويدفع للطابور — صفر انتظار شبكة هنا ═══
   private fun startAudioCapture() {
-    if (!hasMic()) {
-      Log.w("MediaStreaming", "لا يوجد إذن الميكروفون — تخطي الصوت")
-      return
-    }
-    if (audioRecord != null) return
+    if (!hasMic()) { Log.w("MediaStreaming", "لا يوجد إذن الميكروفون — تخطي الصوت"); return }
+    if (audioRecord != null) return   // حارس الازدواج: خيط الالتقاط يعمل أصلاً
     try {
+      val safeBuf = maxOf(
+        AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT),
+        bytesPerSecond * 2        // احتياطي داخلي ≈ ثانيتان — انتهى عصر minBufferSize الهش
+      )
       audioRecord = AudioRecord(
         MediaRecorder.AudioSource.MIC, sampleRate,
-        AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize
+        AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, safeBuf
       )
       audioRecord?.startRecording()
       thread(start = true) {
-        val buf = ByteArray(bufferSize)
+        val buf = ByteArray(READ_BYTES)
         while (isStreaming) {
-          val n = audioRecord?.read(buf, 0, bufferSize) ?: -1
-          if (n > 0) sendFrame("audio", Base64.encodeToString(buf.copyOf(n), Base64.NO_WRAP))
-          Thread.sleep(300)
+          val n = audioRecord?.read(buf, 0, buf.size) ?: -1   // حاجب حتى تمتلئ 300ms
+          if (n > 0) {
+            audioQueue.add(buf.copyOf(n))
+            while (audioQueue.size > QUEUE_MAX) audioQueue.poll()   // drop-oldest
+          }
         }
+      }
+      // المستهلك: ينطلق مرة واحدة ويسحب من الطابور (ويفضّغ المخزون عند التوقف)
+      if (senderRunning.compareAndSet(false, true)) {
+        thread(start = true) { senderLoop() }
       }
     } catch (e: Exception) {
       Log.e("MediaStreaming", "فشل بدء الصوت", e)
     }
   }
 
+  // ═══ 📤 المستهلك: يسحب ويدمج حتى 3 إطارات (≈0.9ث) لكل POST ═══
+  private fun senderLoop() {
+    while (senderRunning.get() || audioQueue.isNotEmpty()) {
+      var batch = audioQueue.poll()
+      if (batch == null) { Thread.sleep(120); continue }
+      var merged = 1
+      while (merged < 3) {
+        val nx = audioQueue.poll() ?: break
+        batch += nx
+        merged++
+      }
+      sendFrame("audio", Base64.encodeToString(batch, Base64.NO_WRAP))
+    }
+  }
+
+  // ═══ 📷 الكاميرا — كما هي ═══
   private fun startCameraShots() {
     if (isCamRunning) return
     if (checkSelfPermission(android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-      Log.w("MediaStreaming", "لا يوجد إذن الكاميرا — تخطي الكاميرا")
-      return
+      Log.w("MediaStreaming", "لا يوجد إذن الكاميرا — تخطي الكاميرا"); return
     }
     isCamRunning = true
     thread(start = true) {
@@ -125,8 +149,7 @@ class MediaStreamingService : Service() {
           val latch = CountDownLatch(1)
           var shot: ByteArray? = null
           cam.takePicture(null, null, null, Camera.PictureCallback { data, _ ->
-            shot = data
-            latch.countDown()
+            shot = data; latch.countDown()
           })
           latch.await(5, TimeUnit.SECONDS)
           shot?.let { sendFrame("photo", Base64.encodeToString(it, Base64.NO_WRAP)) }
@@ -185,9 +208,11 @@ class MediaStreamingService : Service() {
   override fun onDestroy() {
     isStreaming = false
     isCamRunning = false
+    senderRunning.set(false)          // المستهلك يفضّغ الطابور المتبقي ثم يخرج
     try { audioRecord?.stop() } catch (_: Exception) {}
     audioRecord?.release()
     audioRecord = null
+    audioQueue.clear()
     super.onDestroy()
   }
 
